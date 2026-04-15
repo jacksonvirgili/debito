@@ -3,13 +3,31 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
-from pandas.tseries.holiday import BrazilHolidayCalendar
-from pandas.tseries.offsets import CustomBusinessDay
-
 # ===============================
 # Configuração da página
 # ===============================
 st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
+
+# ===============================
+# Feriados nacionais (MANUAL)
+# ===============================
+FERIADOS_BR = pd.to_datetime([
+    # FIXOS
+    "2024-01-01", "2025-01-01", "2026-01-01",  # Confraternização Universal
+    "2024-04-21", "2025-04-21", "2026-04-21",  # Tiradentes
+    "2024-05-01", "2025-05-01", "2026-05-01",  # Dia do Trabalho
+    "2024-09-07", "2025-09-07", "2026-09-07",  # Independência
+    "2024-10-12", "2025-10-12", "2026-10-12",  # Nossa Senhora Aparecida
+    "2024-11-02", "2025-11-02", "2026-11-02",  # Finados
+    "2024-11-15", "2025-11-15", "2026-11-15",  # Proclamação da República
+    "2024-12-25", "2025-12-25", "2026-12-25",  # Natal
+
+    # MÓVEIS (definidos manualmente)
+    "2024-02-12", "2025-03-03", "2026-02-16",  # Carnaval (segunda)
+    "2024-02-13", "2025-03-04", "2026-02-17",  # Carnaval (terça)
+    "2024-03-29", "2025-04-18", "2026-04-03",  # Sexta-feira Santa
+    "2024-06-20", "2025-06-19", "2026-06-04",  # Corpus Christi
+])
 
 # ===============================
 # Carregar dados
@@ -18,13 +36,12 @@ st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
 def carregar_dados():
     df = pd.read_parquet("Acomp.parquet")
 
-    # Remover colunas lixo do Excel
+    # Remover colunas lixo
     df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
 
     # Normalizar tipo produto
     df.loc[df["TIPO PRODUTO"] != "NOVO", "TIPO PRODUTO"] = "REFIN"
 
-    # Garantir datetime
     df["DATA_EFETIVACAO"] = pd.to_datetime(df["DATA_EFETIVACAO"])
 
     return df
@@ -49,14 +66,9 @@ def anotar_barras(ax, x_pos, valores, desloc=0):
         if v <= 0:
             continue
 
-        if max_val > 0 and v < max_val * 0.12:
-            y = v
-            va = "bottom"
-            color = "black"
-        else:
-            y = v * 0.5
-            va = "center"
-            color = "white"
+        y = v if v < max_val * 0.12 else v * 0.5
+        va = "bottom" if y == v else "center"
+        color = "black" if y == v else "white"
 
         ax.text(
             x + desloc,
@@ -72,25 +84,23 @@ def anotar_barras(ax, x_pos, valores, desloc=0):
 
 
 def adicionar_dia_util(df, coluna_data):
-    cal = BrazilHolidayCalendar()
-    cbd = CustomBusinessDay(calendar=cal)
-
     df = df.copy()
-    df["MES"] = df[coluna_data].dt.to_period("M")
 
-    def calcular_dia_util(serie):
-        dias_uteis = pd.date_range(
-            start=serie.min(),
-            end=serie.max(),
-            freq=cbd
-        )
-        mapa = {data: i + 1 for i, data in enumerate(dias_uteis)}
-        return serie.map(mapa)
+    df[coluna_data] = pd.to_datetime(df[coluna_data])
+
+    # Remover sábado/domingo
+    df = df[df[coluna_data].dt.weekday < 5]
+
+    # Remover feriados
+    df = df[~df[coluna_data].isin(FERIADOS_BR)]
+
+    df["MES"] = df[coluna_data].dt.to_period("M")
 
     df["DIA_UTIL"] = (
         df
         .groupby("MES")[coluna_data]
-        .transform(calcular_dia_util)
+        .rank(method="dense")
+        .astype(int)
     )
 
     return df
@@ -163,12 +173,12 @@ if df_f.empty:
     st.stop()
 
 # ===============================
-# Dia útil (sem feriados)
+# Calcular dia útil
 # ===============================
 df_f = adicionar_dia_util(df_f, "DATA_EFETIVACAO")
 
 # ===============================
-# Separar Consignado e Débito
+# Separar Consignado / Débito
 # ===============================
 df_consignado = df_f[df_f["GRUPO PRODUTO"] == "CONSIGNADO"]
 df_debito = df_f[df_f["GRUPO PRODUTO"] == "DÉBITO"]
@@ -186,7 +196,6 @@ def agregar(df):
 
 g_cons = agregar(df_consignado) if not df_consignado.empty else pd.DataFrame()
 g_deb = agregar(df_debito) if not df_debito.empty else pd.DataFrame()
-
 
 # ===============================
 # Gráficos
@@ -211,39 +220,21 @@ def plot_barras(ax, g, titulo):
     ax.set_title(titulo)
     ax.legend()
 
-
 if not g_cons.empty:
-    plot_barras(
-        axs[0],
-        g_cons,
-        "CONSIGNADO — VLRAF por Dia Útil"
-    )
+    plot_barras(axs[0], g_cons, "CONSIGNADO — VLRAF por Dia Útil")
 else:
-    axs[0].text(
-        0.5, 0.5,
-        "Sem dados de Consignado",
-        ha="center", va="center",
-        transform=axs[0].transAxes
-    )
-
+    axs[0].text(0.5, 0.5, "Sem dados Consignado",
+                ha="center", va="center", transform=axs[0].transAxes)
 
 if not g_deb.empty:
-    plot_barras(
-        axs[1],
-        g_deb,
-        "DÉBITO — VLRAF por Dia Útil"
-    )
+    plot_barras(axs[1], g_deb, "DÉBITO — VLRAF por Dia Útil")
 else:
-    axs[1].text(
-        0.5, 0.5,
-        "Sem dados de Débito",
-        ha="center", va="center",
-        transform=axs[1].transAxes
-    )
+    axs[1].text(0.5, 0.5, "Sem dados Débito",
+                ha="center", va="center", transform=axs[1].transAxes)
 
 max_dia = max(
     g_cons.index.max() if not g_cons.empty else 0,
-    g_deb.index.max() if not g_deb.empty else 0,
+    g_deb.index.max() if not g_deb.empty else 0
 )
 
 axs[1].set_xlabel("Dia útil (D+)")
