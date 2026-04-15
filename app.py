@@ -138,6 +138,11 @@ if df_f.empty:
 # ===============================
 # Agregação
 # ===============================
+
+st.write("Classificação:", classificacao)
+st.write("Colunas disponíveis:", df_f.columns.tolist())
+
+
 g = (
     df_f
     .groupby(["DATA_EFETIVACAO", classificacao])["VLRAF"]
