@@ -3,6 +3,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+from pandas.tseries.holiday import BrazilHolidayCalendar
+from pandas.tseries.offsets import CustomBusinessDay
+
 # ===============================
 # Configuração da página
 # ===============================
@@ -14,9 +17,14 @@ st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
 @st.cache_data
 def carregar_dados():
     df = pd.read_parquet("Acomp.parquet")
+
+    # Remover colunas lixo do Excel
     df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
 
+    # Normalizar tipo produto
     df.loc[df["TIPO PRODUTO"] != "NOVO", "TIPO PRODUTO"] = "REFIN"
+
+    # Garantir datetime
     df["DATA_EFETIVACAO"] = pd.to_datetime(df["DATA_EFETIVACAO"])
 
     return df
@@ -41,9 +49,14 @@ def anotar_barras(ax, x_pos, valores, desloc=0):
         if v <= 0:
             continue
 
-        y = v if v < max_val * 0.12 else v * 0.5
-        va = "bottom" if y == v else "center"
-        color = "black" if y == v else "white"
+        if max_val > 0 and v < max_val * 0.12:
+            y = v
+            va = "bottom"
+            color = "black"
+        else:
+            y = v * 0.5
+            va = "center"
+            color = "white"
 
         ax.text(
             x + desloc,
@@ -54,147 +67,188 @@ def anotar_barras(ax, x_pos, valores, desloc=0):
             fontsize=9,
             fontweight="bold",
             color=color,
-            rotation=90,
+            rotation=90
         )
 
 
-def dia_util_relativo(datas):
-    datas = pd.to_datetime(datas)
-    datas_unicas = sorted(d for d in datas.unique() if d.weekday() < 5)
-    mapa = {data: i + 1 for i, data in enumerate(datas_unicas)}
-    return datas.map(mapa)
+def adicionar_dia_util(df, coluna_data):
+    cal = BrazilHolidayCalendar()
+    cbd = CustomBusinessDay(calendar=cal)
+
+    df = df.copy()
+    df["MES"] = df[coluna_data].dt.to_period("M")
+
+    def calcular_dia_util(serie):
+        dias_uteis = pd.date_range(
+            start=serie.min(),
+            end=serie.max(),
+            freq=cbd
+        )
+        mapa = {data: i + 1 for i, data in enumerate(dias_uteis)}
+        return serie.map(mapa)
+
+    df["DIA_UTIL"] = (
+        df
+        .groupby("MES")[coluna_data]
+        .transform(calcular_dia_util)
+    )
+
+    return df
 
 # ===============================
-# Sidebar — filtros globais
+# Sidebar — filtros
 # ===============================
-st.sidebar.title("Filtros Globais")
+st.sidebar.title("Filtros")
 
 regional = st.sidebar.selectbox(
     "Regional",
     ["Todas"] + sorted(df["REGIONAIS"].dropna().unique())
 )
 
+coordenador = st.sidebar.selectbox(
+    "Coordenador",
+    ["Todos"] + sorted(df["COORDENADOR"].dropna().unique())
+)
+
+loja = st.sidebar.selectbox(
+    "Loja",
+    ["Todas"] + sorted(df["DESCRICAO_LOJA"].dropna().unique())
+)
+
+atendente = st.sidebar.selectbox(
+    "Atendente",
+    ["Todos"] + sorted(df["NOME_ATENDENTE"].dropna().unique())
+)
+
+tipo_produto = st.sidebar.selectbox(
+    "Tipo Produto",
+    ["Todos"] + sorted(df["TIPO PRODUTO"].dropna().unique())
+)
+
+mes = st.sidebar.selectbox(
+    "Mês",
+    ["Todos"] + sorted(df["DATA_EFETIVACAO"].dt.strftime("%Y-%m").unique())
+)
+
+classificacao = st.sidebar.radio(
+    "Classificar barras por:",
+    ["COMISSAO_DIFERIDA", "TIPO PRODUTO"]
+)
+
+# ===============================
+# Aplicar filtros
+# ===============================
+df_f = df.copy()
+
 if regional != "Todas":
-    df = df[df["REGIONAIS"] == regional]
+    df_f = df_f[df_f["REGIONAIS"] == regional]
+
+if coordenador != "Todos":
+    df_f = df_f[df_f["COORDENADOR"] == coordenador]
+
+if loja != "Todas":
+    df_f = df_f[df_f["DESCRICAO_LOJA"] == loja]
+
+if atendente != "Todos":
+    df_f = df_f[df_f["NOME_ATENDENTE"] == atendente]
+
+if tipo_produto != "Todos":
+    df_f = df_f[df_f["TIPO PRODUTO"] == tipo_produto]
+
+if mes != "Todos":
+    df_f = df_f[df_f["DATA_EFETIVACAO"].dt.strftime("%Y-%m") == mes]
+
+if df_f.empty:
+    st.warning("Sem dados para os filtros selecionados.")
+    st.stop()
 
 # ===============================
-# Tabs
+# Dia útil (sem feriados)
 # ===============================
-tab_analise, tab_comparacao = st.tabs([
-    "Análise Diária",
-    "Comparação Mensal (Grupo Produto)"
-])
+df_f = adicionar_dia_util(df_f, "DATA_EFETIVACAO")
 
 # ===============================
-# TAB 1 — ANÁLISE DIÁRIA (SEU GRÁFICO ORIGINAL)
+# Separar Consignado e Débito
 # ===============================
-with tab_analise:
-    st.subheader("VLRAF Diário e Acumulado")
+df_consignado = df_f[df_f["GRUPO PRODUTO"] == "CONSIGNADO"]
+df_debito = df_f[df_f["GRUPO PRODUTO"] == "DÉBITO"]
 
-    classificacao = st.radio(
-        "Classificar por:",
-        ["COMISSAO_DIFERIDA", "TIPO PRODUTO"]
-    )
 
-    mes = st.selectbox(
-        "Mês",
-        ["Todos"] + sorted(df["DATA_EFETIVACAO"].dt.strftime("%Y-%m").unique())
-    )
-
-    df_f = df.copy()
-
-    if mes != "Todos":
-        df_f = df_f[
-            df_f["DATA_EFETIVACAO"].dt.strftime("%Y-%m") == mes
-        ]
-
-    if df_f.empty:
-        st.warning("Sem dados.")
-        st.stop()
-
-    g = (
-        df_f
-        .groupby(["DATA_EFETIVACAO", classificacao])["VLRAF"]
+def agregar(df):
+    return (
+        df
+        .groupby(["DIA_UTIL", classificacao])["VLRAF"]
         .sum()
         .unstack(fill_value=0)
         .sort_index()
     )
 
-    g_acum = g.cumsum()
 
+g_cons = agregar(df_consignado) if not df_consignado.empty else pd.DataFrame()
+g_deb = agregar(df_debito) if not df_debito.empty else pd.DataFrame()
+
+
+# ===============================
+# Gráficos
+# ===============================
+fig, axs = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
+
+def plot_barras(ax, g, titulo):
     classes = g.columns.tolist()
     x = np.arange(len(g))
     width = 0.8 / max(len(classes), 1)
-    offsets = np.linspace(-width, width, len(classes))
 
-    fig, axs = plt.subplots(2, 1, figsize=(16, 10), sharex=True)
-
-    for i, classe in enumerate(classes):
-        axs[0].bar(x + offsets[i], g[classe], width, label=classe)
-        anotar_barras(axs[0], x, g[classe], offsets[i])
-
-    axs[0].set_title("VLRAF Diário")
-    axs[0].legend()
-
-    for i, classe in enumerate(classes):
-        axs[1].bar(x + offsets[i], g_acum[classe], width, label=classe)
-        anotar_barras(axs[1], x, g_acum[classe], offsets[i])
-
-    axs[1].set_title("VLRAF Acumulado")
-    axs[1].set_xticks(x)
-    axs[1].set_xticklabels(g.index.day)
-    axs[1].legend()
-
-    plt.tight_layout()
-    st.pyplot(fig)
-
-# ===============================
-# TAB 2 — COMPARAÇÃO ENTRE MESES (DIAS ÚTEIS)
-# ===============================
-with tab_comparacao:
-    st.subheader("Comparação por Grupo Produto — Dias Úteis")
-
-    meses = sorted(df["DATA_EFETIVACAO"].dt.strftime("%Y-%m").unique())
-
-    col1, col2 = st.columns(2)
-    mes_a = col1.selectbox("Mês A", meses)
-    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
-
-    df_comp = df[
-        df["DATA_EFETIVACAO"].dt.strftime("%Y-%m").isin([mes_a, mes_b])
-    ].copy()
-
-    df_comp["MES"] = df_comp["DATA_EFETIVACAO"].dt.strftime("%Y-%m")
-
-    df_comp["DIA_UTIL"] = (
-        df_comp
-        .groupby("MES")["DATA_EFETIVACAO"]
-        .transform(dia_util_relativo)
+    offsets = np.linspace(
+        -width * (len(classes) - 1) / 2,
+        width * (len(classes) - 1) / 2,
+        len(classes)
     )
 
-    g_comp = (
-        df_comp
-        .groupby(["MES", "DIA_UTIL", "GRUPO PRODUTO"])["VLRAF"]
-        .sum()
-        .reset_index()
-    )
+    for i, classe in enumerate(classes):
+        ax.bar(x + offsets[i], g[classe], width, label=str(classe))
+        anotar_barras(ax, x, g[classe], offsets[i])
 
-    fig, ax = plt.subplots(figsize=(16, 6))
-
-    for mes in [mes_a, mes_b]:
-        dados = g_comp[g_comp["MES"] == mes]
-        for grp in dados["GRUPO PRODUTO"].unique():
-            sub = dados[dados["GRUPO PRODUTO"] == grp]
-            ax.plot(
-                sub["DIA_UTIL"],
-                sub["VLRAF"],
-                marker="o",
-                label=f"{grp} — {mes}"
-            )
-
-    ax.set_xlabel("Dia Útil (D+)")
-    ax.set_ylabel("VLRAF")
-    ax.set_title("Comparação Mensal por Dia Útil")
+    ax.set_title(titulo)
     ax.legend()
 
-    st.pyplot(fig)
+
+if not g_cons.empty:
+    plot_barras(
+        axs[0],
+        g_cons,
+        "CONSIGNADO — VLRAF por Dia Útil"
+    )
+else:
+    axs[0].text(
+        0.5, 0.5,
+        "Sem dados de Consignado",
+        ha="center", va="center",
+        transform=axs[0].transAxes
+    )
+
+
+if not g_deb.empty:
+    plot_barras(
+        axs[1],
+        g_deb,
+        "DÉBITO — VLRAF por Dia Útil"
+    )
+else:
+    axs[1].text(
+        0.5, 0.5,
+        "Sem dados de Débito",
+        ha="center", va="center",
+        transform=axs[1].transAxes
+    )
+
+max_dia = max(
+    g_cons.index.max() if not g_cons.empty else 0,
+    g_deb.index.max() if not g_deb.empty else 0,
+)
+
+axs[1].set_xlabel("Dia útil (D+)")
+axs[1].set_xticks(range(max_dia))
+axs[1].set_xticklabels([f"D+{i}" for i in range(1, max_dia + 1)])
+
+plt.tight_layout()
+st.pyplot(fig)
