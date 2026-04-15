@@ -16,7 +16,7 @@ def carregar_dados():
 
     df['DATA_EFETIVACAO'] = pd.to_datetime(df['DATA_EFETIVACAO'].dt.date)
 
-    return df.set_index('DATA_EFETIVACAO')
+    return df
 
 
 df = carregar_dados()
@@ -102,7 +102,7 @@ grupo_produto = st.sidebar.selectbox(
 
 mes = st.sidebar.selectbox(
     "Mês",
-    ["Todos"] + sorted(df.index.strftime('%Y-%m').unique())
+    ["Todos"] + sorted(df['DATA_EFETIVACAO'].dt.strftime('%Y-%m').unique())
 )
 
 # ===============================
@@ -129,7 +129,7 @@ if grupo_produto != "Todos" and classificacao != "GRUPO PRODUTO":
     df_f = df_f[df_f["GRUPO PRODUTO"] == grupo_produto]
 
 if mes != "Todos":
-    df_f = df_f[df_f.index.strftime('%Y-%m') == mes]
+    df_f = df_f[df_f['DATA_EFETIVACAO'].dt.strftime('%Y-%m') == mes]
 
 if df_f.empty:
     st.warning("Sem dados para os filtros selecionados.")
