@@ -10,7 +10,7 @@ st.set_page_config(layout="wide")
 # ===============================
 @st.cache_data
 def carregar_dados():
-    df = pd.read_excel("Acomp.xlsx")
+    df = pd.read_csv("Acomp.csv")
 
     df.loc[df['TIPO PRODUTO'] != 'NOVO', 'TIPO PRODUTO'] = 'REFIN'
 
