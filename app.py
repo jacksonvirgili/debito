@@ -75,9 +75,9 @@ def aplicar_estilo_plotly(fig):
     
 MAPA_CORES = {
     "NOVO": "#1f77b4",          # azul
-    "corte": "1f77b4",
+    "corte": "#1f77b4",
     "REFIN": "#EA9411",         # laranja
-    "24": "EA9411",
+    "24": "#EA9411",
     "PORT": "#6f42c1",          # roxo
     "REFIN DA PORT": "#2ca02c"  # verde
 }
