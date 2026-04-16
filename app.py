@@ -78,7 +78,7 @@ MAPA_CORES = {
     "corte": "#1f77b4",
     "REFIN": "#EA9411",         # laranja
     "24": "#EA9411",
-    "PORT": "#6f42c1",          # roxo
+    "PORTABILIDADE": "#6f42c1",          # roxo
     "REFIN DA PORT": "#2ca02c"  # verde
 }
 
