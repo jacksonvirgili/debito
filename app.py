@@ -182,8 +182,11 @@ with tab2:
         g[mes_a] = g.get(mes_a, 0)
         g[mes_b] = g.get(mes_b, 0)
 
-        g["DESVIO"] = g[mes_b] - g[mes_a]
-        cores = np.where(g["DESVIO"] >= 0, "green", "red")
+        # Mantém somente dias com valor nos dois meses
+        g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
+        
+        g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
+        cores = np.where(g_desvio["DESVIO"] >= 0, "green", "red")
 
         # ===== FIGURA COM GRID (principal + auxiliary) =====
         fig = plt.figure(figsize=(18, 8))
@@ -206,7 +209,11 @@ with tab2:
         )
 
         # -------- SUBPLOT DESVIO (MENOR) --------
-        bars = ax_dev.bar(g.index, g["DESVIO"], color=cores)
+        bars = ax_dev.bar(
+            g_desvio.index,
+            g_desvio["DESVIO"],
+            color=cores
+        )
         ax_dev.axhline(0, color="black", linewidth=1)
         ax_dev.set_ylabel("Δ VLRAF")
         ax_dev.set_xlabel("Dia útil")
@@ -218,6 +225,11 @@ with tab2:
             )
         )
 
-        ax_dev.set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
+        mplcursors.cursor(bars, hover=True).connect(
+            "add",
+            lambda sel: sel.annotation.set_text(
+                f"D+{int(sel.target[0])}\n{formatar_reais(sel.target[1])}"
+            )
+        )
 
         st.pyplot(fig)
