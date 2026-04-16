@@ -73,7 +73,10 @@ def aplicar_estilo_plotly(fig):
         zeroline=False
     )
     return fig
-    
+
+# =================================================
+# MAPAS DE CORES
+# =================================================
 MAPA_CORES_PAGAMENTO = {
     "24": "#1f77b4",
     "corte": "#EA9411"
@@ -119,7 +122,7 @@ if loja != "Todas":
 tab1, tab2 = st.tabs(["Análise Diária", "Comparação entre Meses"])
 
 # =================================================
-# TAB 1 — PLOTLY (ESTILO DO TAB 2)
+# TAB 1 — ANÁLISE DIÁRIA
 # =================================================
 with tab1:
     st.subheader("Análise diária por classificação")
@@ -133,13 +136,12 @@ with tab1:
         "Classificar por:",
         ["TIPO PAGAMENTO", "TIPO PRODUTO"]
     )
-    
-    # Mapeamento UX → coluna real
+
     MAPA_CLASSIFICACAO = {
         "TIPO PAGAMENTO": "COMISSAO_DIFERIDA",
         "TIPO PRODUTO": "TIPO PRODUTO"
     }
-    
+
     classificacao = MAPA_CLASSIFICACAO[classificacao_label]
 
     mes = st.selectbox("Mês", sorted(df["MES"].unique()))
@@ -153,16 +155,22 @@ with tab1:
         .sum()
         .unstack(fill_value=0)
     )
-    
+
     g_acum = g.cumsum()
-    
-    # >>> COLE AQUI <<<
+
+    # Ordem segura
     if classificacao == "COMISSAO_DIFERIDA":
-        ordem = ["24", "corte"]
-        g = g.reindex(columns=ordem)
-        g_acum = g_acum.reindex(columns=ordem)
-    # >>> FIM DO AJUSTE <<<
-    
+        ordem = [c for c in ["24", "corte"] if c in g.columns]
+        g = g[ordem]
+        g_acum = g_acum[ordem]
+
+    # ✅ DEFINIÇÃO INCONDICIONAL DO MAPA DE CORES
+    mapa_cores = (
+        MAPA_CORES_PAGAMENTO
+        if classificacao == "COMISSAO_DIFERIDA"
+        else MAPA_CORES_PRODUTO
+    )
+
     eixo_x = [f"D+{d}" for d in g.index]
 
     fig = make_subplots(
@@ -179,14 +187,8 @@ with tab1:
             y=g[col],
             name=str(col),
             marker_color=mapa_cores.get(col, "gray"),
-            hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
+            hovertemplate=f"<b>%{{x}}</b><br>{col}: R$ %{{y:,.0f}}<extra></extra>"
         )
-
-    mapa_cores = (
-        MAPA_CORES_PAGAMENTO
-        if classificacao == "COMISSAO_DIFERIDA"
-        else MAPA_CORES_PRODUTO
-    )
 
     for col in g_acum.columns:
         fig.add_bar(
@@ -195,7 +197,7 @@ with tab1:
             y=g_acum[col],
             showlegend=False,
             marker_color=mapa_cores.get(col, "gray"),
-            hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
+            hovertemplate=f"<b>%{{x}}</b><br>{col}: R$ %{{y:,.0f}}<extra></extra>"
         )
 
     fig.update_yaxes(title_text="VLRAF", row=1, col=1)
@@ -247,10 +249,10 @@ with tab2:
                 y=g[mes],
                 name=mes,
                 marker_color=cores[mes],
-                hovertemplate="<b>%{x}</b><br>" + mes + ": R$ %{y:,.0f}<extra></extra>"
+                hovertemplate=f"<b>%{{x}}</b><br>{mes}: R$ %{{y:,.0f}}<extra></extra>"
             )
 
-        g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)]
+        g_desvio = g.loc[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
         g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
 
         fig.add_bar(
