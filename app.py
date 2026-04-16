@@ -41,9 +41,6 @@ df = carregar_dados()
 # =================================================
 # FUNÇÕES
 # =================================================
-def formatar_reais(v):
-    return f"R$ {v:,.0f}".replace(",", ".")
-
 def adicionar_dia_util(df):
     df = df.copy()
     df = df[df["DATA_EFETIVACAO"].dt.weekday < 5]
@@ -89,7 +86,7 @@ df = adicionar_dia_util(df)
 tab1, tab2 = st.tabs(["Análise Diária", "Comparação entre Meses"])
 
 # =================================================
-# TAB 1 — MATPLOTLIB (SEM HOVER)
+# TAB 1 — MATPLOTLIB COM ESTILO
 # =================================================
 with tab1:
     st.subheader("Análise diária por classificação")
@@ -107,32 +104,38 @@ with tab1:
     mes = st.selectbox("Mês", sorted(df["MES"].unique()))
 
     base = df[df["MES"] == mes]
-
     if grupo_produto != "Todos":
         base = base[base["GRUPO PRODUTO"] == grupo_produto]
 
     g = (
-        base
-        .groupby(["DIA_UTIL", classificacao])["VLRAF"]
+        base.groupby(["DIA_UTIL", classificacao])["VLRAF"]
         .sum()
         .unstack(fill_value=0)
     )
-
     g_acum = g.cumsum()
 
     fig, axs = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
 
+    # ---- Diário
     g.plot(kind="bar", ax=axs[0])
     axs[0].set_title("VLRAF Diário")
+    axs[0].grid(axis="y", alpha=0.3)
+    axs[0].spines["top"].set_visible(False)
+    axs[0].spines["right"].set_visible(False)
 
+    # ---- Acumulado
     g_acum.plot(kind="bar", ax=axs[1])
     axs[1].set_title("VLRAF Acumulado")
+    axs[1].grid(axis="y", alpha=0.3)
+    axs[1].spines["top"].set_visible(False)
+    axs[1].spines["right"].set_visible(False)
     axs[1].set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
 
+    plt.tight_layout()
     st.pyplot(fig)
 
 # =================================================
-# TAB 2 — PLOTLY (HOVER FUNCIONANDO)
+# TAB 2 — PLOTLY COM EIXOS ALINHADOS
 # =================================================
 with tab2:
     st.subheader("Comparação entre meses com desvio diário")
@@ -147,7 +150,6 @@ with tab2:
 
     for prod in produtos:
         st.markdown(f"### {prod}")
-
         sub = base[base["GRUPO PRODUTO"] == prod]
 
         g = (
@@ -156,22 +158,16 @@ with tab2:
             .unstack("MES", fill_value=0)
         )
 
-        # ----------------------------
-        # GRÁFICO PRINCIPAL
-        # ----------------------------
-        fig_main = go.Figure()
+        eixo_x = [f"D+{d}" for d in g.index]
 
+        # -------- Gráfico principal
+        fig_main = go.Figure()
         for mes in [mes_a, mes_b]:
             fig_main.add_bar(
-                x=[f"D+{d}" for d in g.index],
+                x=eixo_x,
                 y=g.get(mes, 0),
                 name=mes,
-                hovertemplate=(
-                    "<b>%{x}</b><br>"
-                    + mes +
-                    ": R$ %{y:,.0f}"
-                    "<extra></extra>"
-                )
+                hovertemplate="<b>%{x}</b><br>" + mes + ": R$ %{y:,.0f}<extra></extra>"
             )
 
         fig_main.update_layout(
@@ -179,36 +175,29 @@ with tab2:
             height=400,
             yaxis_title="VLRAF"
         )
-
         st.plotly_chart(fig_main, use_container_width=True)
 
-        # ----------------------------
-        # DESVIO (APENAS DIAS COMPARÁVEIS)
-        # ----------------------------
+        # -------- Desvio alinhado
         g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
         g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
 
         fig_dev = go.Figure()
-
         fig_dev.add_bar(
             x=[f"D+{d}" for d in g_desvio.index],
             y=g_desvio["DESVIO"],
-            marker_color=[
-                "green" if v >= 0 else "red"
-                for v in g_desvio["DESVIO"]
-            ],
-            hovertemplate=(
-                "<b>%{x}</b><br>"
-                "Desvio: R$ %{y:,.0f}"
-                "<extra></extra>"
-            )
+            marker_color=["green" if v >= 0 else "red" for v in g_desvio["DESVIO"]],
+            hovertemplate="<b>%{x}</b><br>Desvio: R$ %{y:,.0f}<extra></extra>"
         )
 
         fig_dev.add_hline(y=0)
 
         fig_dev.update_layout(
-            height=220,
+            height=280,  # 👈 aumentado
             yaxis_title="Δ VLRAF",
+            xaxis=dict(
+                categoryorder="array",
+                categoryarray=eixo_x
+            ),
             showlegend=False
         )
 
