@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import mplcursors
+import plotly.graph_objects as go
 
 # =================================================
 # CONFIGURAÇÃO
@@ -10,7 +10,7 @@ import mplcursors
 st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
 
 # =================================================
-# FERIADOS NACIONAIS (MANUAL)
+# FERIADOS NACIONAIS
 # =================================================
 FERIADOS_BR = pd.to_datetime([
     "2024-01-01","2025-01-01","2026-01-01",
@@ -27,7 +27,7 @@ FERIADOS_BR = pd.to_datetime([
 ])
 
 # =================================================
-# CARREGAR DADOS
+# DADOS
 # =================================================
 @st.cache_data
 def carregar_dados():
@@ -57,7 +57,7 @@ def adicionar_dia_util(df):
     return df
 
 # =================================================
-# SIDEBAR – FILTROS
+# FILTROS
 # =================================================
 st.sidebar.title("Filtros")
 
@@ -89,7 +89,7 @@ df = adicionar_dia_util(df)
 tab1, tab2 = st.tabs(["Análise Diária", "Comparação entre Meses"])
 
 # =================================================
-# TAB 1 — ANÁLISE DIÁRIA
+# TAB 1 — ANÁLISE DIÁRIA (MANTIDO EM MATPLOTLIB)
 # =================================================
 with tab1:
     st.subheader("Análise diária por classificação")
@@ -125,34 +125,18 @@ with tab1:
 
     fig, axs = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
 
-    bars1 = g.plot(kind="bar", ax=axs[0])
+    g.plot(kind="bar", ax=axs[0])
     axs[0].set_title("VLRAF Diário")
-    axs[0].legend()
 
-    mplcursors.cursor(axs[0], hover=True).connect(
-        "add",
-        lambda sel: sel.annotation.set_text(
-            formatar_reais(sel.target[1])
-        )
-    )
-
-    bars2 = g_acum.plot(kind="bar", ax=axs[1])
+    g_acum.plot(kind="bar", ax=axs[1])
     axs[1].set_title("VLRAF Acumulado")
     axs[1].set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
-    axs[1].legend()
-
-    mplcursors.cursor(axs[1], hover=True).connect(
-        "add",
-        lambda sel: sel.annotation.set_text(
-            formatar_reais(sel.target[1])
-        )
-    )
 
     plt.tight_layout()
     st.pyplot(fig)
 
 # =================================================
-# TAB 2 — DESVIO ENTRE MESES (SUBPLOTS POR PRODUTO)
+# TAB 2 — COMPARAÇÃO + DESVIO (PLOTLY)
 # =================================================
 with tab2:
     st.subheader("Comparação entre meses com desvio diário")
@@ -160,9 +144,7 @@ with tab2:
     meses = sorted(df["MES"].unique())
     col1, col2 = st.columns(2)
     mes_a = col1.selectbox("Mês A", meses)
-    mes_b = col2.selectbox(
-        "Mês B", meses, index=1 if len(meses) > 1 else 0
-    )
+    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
 
     base = df[df["MES"].isin([mes_a, mes_b])]
     produtos = sorted(base["GRUPO PRODUTO"].unique())
@@ -178,72 +160,51 @@ with tab2:
             .unstack("MES", fill_value=0)
         )
 
-        # garante colunas
-        g[mes_a] = g.get(mes_a, 0)
-        g[mes_b] = g.get(mes_b, 0)
+        # ===================
+        # GRÁFICO PRINCIPAL
+        # ===================
+        fig_main = go.Figure()
 
-        # Mantém somente dias com valor nos dois meses
+        for mes in [mes_a, mes_b]:
+            fig_main.add_bar(
+                x=[f"D+{d}" for d in g.index],
+                y=g.get(mes, 0),
+                name=mes,
+                hovertemplate="%{x}<br>" + mes + ": %{y:,.0f}<extra></extra>"
+            )
+
+        fig_main.update_layout(
+            barmode="group",
+            height=400,
+            yaxis_title="VLRAF"
+        )
+
+        st.plotly_chart(fig_main, use_container_width=True)
+
+        # ===================
+        # DESVIO (SOMENTE DIAS VÁLIDOS)
+        # ===================
         g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
-        
         g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
-        cores = np.where(g_desvio["DESVIO"] >= 0, "green", "red")
 
-        # ===== FIGURA COM GRID (principal + auxiliary) =====
-        fig = plt.figure(figsize=(18, 8))
-        gs = fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.15)
+        fig_dev = go.Figure()
 
-        ax_main = fig.add_subplot(gs[0])
-        ax_dev = fig.add_subplot(gs[1], sharex=ax_main)
-
-        # -------- GRÁFICO PRINCIPAL --------
-        g[[mes_a, mes_b]].plot(kind="bar", ax=ax_main)
-        ax_main.set_title(f"{prod} – Comparação {mes_a} x {mes_b}")
-        ax_main.set_ylabel("VLRAF")
-        ax_main.legend(title="Mês")
-
-        mplcursors.cursor(ax_main, hover=True).connect(
-            "add",
-            lambda sel: sel.annotation.set_text(
-                formatar_reais(sel.target[1])
-            )
+        fig_dev.add_bar(
+            x=[f"D+{d}" for d in g_desvio.index],
+            y=g_desvio["DESVIO"],
+            marker_color=[
+                "green" if v >= 0 else "red"
+                for v in g_desvio["DESVIO"]
+            ],
+            hovertemplate="%{x}<br>Desvio: %{y:,.0f}<extra></extra>"
         )
 
-        # -------- SUBPLOT DESVIO (MENOR) --------
-        # posições completas do eixo X (todos os dias do gráfico principal)
-        dias_completos = list(g.index)
-        x_all = np.arange(len(dias_completos))
-        
-        # posições apenas dos dias válidos para desvio
-        x_desvio = [dias_completos.index(d) for d in g_desvio.index]
-        
-        bars = ax_dev.bar(
-            x_desvio,
-            g_desvio["DESVIO"],
-            color=cores,
-            width=0.8
-        )
-        
-        ax_dev.axhline(0, color="black", linewidth=1)
-        ax_dev.set_ylabel("Δ VLRAF")
-        ax_dev.set_xlabel("Dia útil")
-        
-        # mantém exatamente o mesmo eixo X do gráfico principal
-        ax_dev.set_xlim(-0.5, len(dias_completos) - 0.5)
-        ax_dev.set_xticks(x_all)
-        ax_dev.set_xticklabels([f"D+{d}" for d in dias_completos], rotation=0)
+        fig_dev.add_hline(y=0)
 
-        mplcursors.cursor(bars, hover=True).connect(
-            "add",
-            lambda sel: sel.annotation.set_text(
-                f"D+{int(sel.target[0])}\n{formatar_reais(sel.target[1])}"
-            )
+        fig_dev.update_layout(
+            height=200,
+            yaxis_title="Δ VLRAF",
+            showlegend=False
         )
 
-        mplcursors.cursor(bars, hover=True).connect(
-            "add",
-            lambda sel: sel.annotation.set_text(
-                f"D+{int(sel.target[0])}\n{formatar_reais(sel.target[1])}"
-            )
-        )
-
-        st.pyplot(fig)
+        st.plotly_chart(fig_dev, use_container_width=True)
