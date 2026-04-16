@@ -57,6 +57,7 @@ def aplicar_estilo_plotly(fig):
         plot_bgcolor="white",
         paper_bgcolor="white",
         barmode="group",
+        dragmode=False,
         legend=dict(
             orientation="h",
             yanchor="bottom",
