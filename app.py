@@ -137,6 +137,8 @@ with tab1:
 # =================================================
 # TAB 2 — PLOTLY COM EIXOS ALINHADOS
 # =================================================
+from plotly.subplots import make_subplots
+
 with tab2:
     st.subheader("Comparação entre meses com desvio diário")
 
@@ -150,6 +152,7 @@ with tab2:
 
     for prod in produtos:
         st.markdown(f"### {prod}")
+
         sub = base[base["GRUPO PRODUTO"] == prod]
 
         g = (
@@ -160,45 +163,64 @@ with tab2:
 
         eixo_x = [f"D+{d}" for d in g.index]
 
-        # -------- Gráfico principal
-        fig_main = go.Figure()
+        # =============================
+        # FIGURA ÚNICA COM SUBPLOTS
+        # =============================
+        fig = make_subplots(
+            rows=2,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+            row_heights=[0.7, 0.3]
+        )
+
+        # -------- GRÁFICO PRINCIPAL
         for mes in [mes_a, mes_b]:
-            fig_main.add_bar(
+            fig.add_bar(
+                row=1,
+                col=1,
                 x=eixo_x,
                 y=g.get(mes, 0),
                 name=mes,
-                hovertemplate="<b>%{x}</b><br>" + mes + ": R$ %{y:,.0f}<extra></extra>"
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    + mes +
+                    ": R$ %{y:,.0f}"
+                    "<extra></extra>"
+                )
             )
 
-        fig_main.update_layout(
-            barmode="group",
-            height=400,
-            yaxis_title="VLRAF"
-        )
-        st.plotly_chart(fig_main, use_container_width=True)
-
-        # -------- Desvio alinhado
+        # -------- DESVIO (somente dias válidos)
         g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
         g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
 
-        fig_dev = go.Figure()
-        fig_dev.add_bar(
+        fig.add_bar(
+            row=2,
+            col=1,
             x=[f"D+{d}" for d in g_desvio.index],
             y=g_desvio["DESVIO"],
-            marker_color=["green" if v >= 0 else "red" for v in g_desvio["DESVIO"]],
-            hovertemplate="<b>%{x}</b><br>Desvio: R$ %{y:,.0f}<extra></extra>"
-        )
-
-        fig_dev.add_hline(y=0)
-
-        fig_dev.update_layout(
-            height=280,  # 👈 aumentado
-            yaxis_title="Δ VLRAF",
-            xaxis=dict(
-                categoryorder="array",
-                categoryarray=eixo_x
+            marker_color=[
+                "#EA9411" if v >= 0 else "gray"
+                for v in g_desvio["DESVIO"]
+            ],
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Desvio: R$ %{y:,.0f}"
+                "<extra></extra>"
             ),
             showlegend=False
         )
 
-        st.plotly_chart(fig_dev, use_container_width=True)
+        # Linha zero no desvio
+        fig.add_hline(y=0, row=2, col=1)
+
+        # Layout final
+        fig.update_layout(
+            height=550,
+            barmode="group",
+            xaxis_title="Dia útil",
+            yaxis_title="VLRAF",
+            yaxis2_title="Δ VLRAF"
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
