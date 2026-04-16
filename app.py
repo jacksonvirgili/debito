@@ -128,7 +128,7 @@ with tab1:
 
     classificacao = st.radio(
         "Classificar por:",
-        ["COMISSAO_DIFERIDA", "TIPO PRODUTO"]
+        ["TIPO PAGAMENTO", "TIPO PRODUTO"]
     )
 
     mes = st.selectbox("Mês", sorted(df["MES"].unique()))
