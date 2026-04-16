@@ -182,13 +182,19 @@ with tab1:
             hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
         )
 
+    mapa_cores = (
+        MAPA_CORES_PAGAMENTO
+        if classificacao == "COMISSAO_DIFERIDA"
+        else MAPA_CORES_PRODUTO
+    )
+
     for col in g_acum.columns:
         fig.add_bar(
             row=2, col=1,
             x=eixo_x,
             y=g_acum[col],
             showlegend=False,
-            marker_color=mapa_cores = MAPA_CORES_PAGAMENTO if classificacao == "COMISSAO_DIFERIDA" else MAPA_CORES_PRODUTO,
+            marker_color=mapa_cores.get(col, "gray"),
             hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
         )
 
