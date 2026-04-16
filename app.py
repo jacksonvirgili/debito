@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 # =================================================
 # CONFIGURAÇÃO
@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
 
 # =================================================
-# FERIADOS NACIONAIS
+# FERIADOS
 # =================================================
 FERIADOS_BR = pd.to_datetime([
     "2024-01-01","2025-01-01","2026-01-01",
@@ -32,44 +32,28 @@ FERIADOS_BR = pd.to_datetime([
 @st.cache_data
 def carregar_dados():
     df = pd.read_parquet("Acomp.parquet")
-    df = df.loc[:, ~df.columns.str.contains("^Unnamed")]
     df["DATA_EFETIVACAO"] = pd.to_datetime(df["DATA_EFETIVACAO"])
     return df
 
 df = carregar_dados()
 
-# =================================================
-# FUNÇÕES
-# =================================================
 def adicionar_dia_util(df):
-    df = df.copy()
     df = df[df["DATA_EFETIVACAO"].dt.weekday < 5]
     df = df[~df["DATA_EFETIVACAO"].isin(FERIADOS_BR)]
     df["MES"] = df["DATA_EFETIVACAO"].dt.strftime("%Y-%m")
-    df["DIA_UTIL"] = (
-        df.groupby("MES")["DATA_EFETIVACAO"]
-        .rank(method="dense")
-        .astype(int)
-    )
+    df["DIA_UTIL"] = df.groupby("MES")["DATA_EFETIVACAO"].rank(method="dense").astype(int)
     return df
+
+df = adicionar_dia_util(df)
 
 # =================================================
 # FILTROS
 # =================================================
 st.sidebar.title("Filtros")
 
-regional = st.sidebar.selectbox(
-    "Regional",
-    ["Todas"] + sorted(df["REGIONAIS"].dropna().unique())
-)
-coordenador = st.sidebar.selectbox(
-    "Coordenador",
-    ["Todos"] + sorted(df["COORDENADOR"].dropna().unique())
-)
-loja = st.sidebar.selectbox(
-    "Loja",
-    ["Todas"] + sorted(df["DESCRICAO_LOJA"].dropna().unique())
-)
+regional = st.sidebar.selectbox("Regional", ["Todas"] + sorted(df["REGIONAIS"].unique()))
+coordenador = st.sidebar.selectbox("Coordenador", ["Todos"] + sorted(df["COORDENADOR"].unique()))
+loja = st.sidebar.selectbox("Loja", ["Todas"] + sorted(df["DESCRICAO_LOJA"].unique()))
 
 if regional != "Todas":
     df = df[df["REGIONAIS"] == regional]
@@ -78,15 +62,13 @@ if coordenador != "Todos":
 if loja != "Todas":
     df = df[df["DESCRICAO_LOJA"] == loja]
 
-df = adicionar_dia_util(df)
-
 # =================================================
 # TABS
 # =================================================
 tab1, tab2 = st.tabs(["Análise Diária", "Comparação entre Meses"])
 
 # =================================================
-# TAB 1 — MATPLOTLIB COM ESTILO
+# TAB 1 — PLOTLY (PADRÃO TAB 2)
 # =================================================
 with tab1:
     st.subheader("Análise diária por classificação")
@@ -97,7 +79,7 @@ with tab1:
     )
 
     classificacao = st.radio(
-        "Classificar por:",
+        "Classificar por",
         ["COMISSAO_DIFERIDA", "TIPO PRODUTO"]
     )
 
@@ -112,33 +94,52 @@ with tab1:
         .sum()
         .unstack(fill_value=0)
     )
+
     g_acum = g.cumsum()
+    eixo_x = [f"D+{d}" for d in g.index]
 
-    fig, axs = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
+    fig = make_subplots(
+        rows=2,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        subplot_titles=["VLRAF Diário", "VLRAF Acumulado"]
+    )
 
-    # ---- Diário
-    g.plot(kind="bar", ax=axs[0])
-    axs[0].set_title("VLRAF Diário")
-    axs[0].grid(axis="y", alpha=0.3)
-    axs[0].spines["top"].set_visible(False)
-    axs[0].spines["right"].set_visible(False)
+    for col in g.columns:
+        fig.add_bar(
+            row=1,
+            col=1,
+            x=eixo_x,
+            y=g[col],
+            name=col,
+            marker_color="#EA9411",
+            hovertemplate="<b>%{x}</b><br>" + col + ": R$ %{y:,.0f}<extra></extra>"
+        )
 
-    # ---- Acumulado
-    g_acum.plot(kind="bar", ax=axs[1])
-    axs[1].set_title("VLRAF Acumulado")
-    axs[1].grid(axis="y", alpha=0.3)
-    axs[1].spines["top"].set_visible(False)
-    axs[1].spines["right"].set_visible(False)
-    axs[1].set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
+        fig.add_bar(
+            row=2,
+            col=1,
+            x=eixo_x,
+            y=g_acum[col],
+            showlegend=False,
+            marker_color="#EA9411",
+            hovertemplate="<b>%{x}</b><br>" + col + ": R$ %{y:,.0f}<extra></extra>"
+        )
 
-    plt.tight_layout()
-    st.pyplot(fig)
+    fig.update_layout(
+        height=550,
+        barmode="group",
+        yaxis_title="VLRAF",
+        yaxis2_title="VLRAF Acum",
+        xaxis_title="Dia útil"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
 # =================================================
-# TAB 2 — PLOTLY COM EIXOS ALINHADOS
+# TAB 2 — MANTIDA COMO APROVADA
 # =================================================
-from plotly.subplots import make_subplots
-
 with tab2:
     st.subheader("Comparação entre meses com desvio diário")
 
@@ -154,73 +155,48 @@ with tab2:
         st.markdown(f"### {prod}")
 
         sub = base[base["GRUPO PRODUTO"] == prod]
-
-        g = (
-            sub.groupby(["MES", "DIA_UTIL"])["VLRAF"]
-            .sum()
-            .unstack("MES", fill_value=0)
-        )
+        g = sub.groupby(["MES", "DIA_UTIL"])["VLRAF"].sum().unstack("MES", fill_value=0)
 
         eixo_x = [f"D+{d}" for d in g.index]
 
-        # =============================
-        # FIGURA ÚNICA COM SUBPLOTS
-        # =============================
         fig = make_subplots(
             rows=2,
             cols=1,
             shared_xaxes=True,
-            vertical_spacing=0.08,
-            row_heights=[0.7, 0.3]
+            row_heights=[0.7,0.3],
+            vertical_spacing=0.08
         )
 
-        # -------- GRÁFICO PRINCIPAL
+        cores = {mes_a: "gray", mes_b: "#EA9411"}
+
         for mes in [mes_a, mes_b]:
             fig.add_bar(
-                row=1,
-                col=1,
+                row=1, col=1,
                 x=eixo_x,
                 y=g.get(mes, 0),
                 name=mes,
-                hovertemplate=(
-                    "<b>%{x}</b><br>"
-                    + mes +
-                    ": R$ %{y:,.0f}"
-                    "<extra></extra>"
-                )
+                marker_color=cores[mes],
+                hovertemplate="<b>%{x}</b><br>" + mes + ": R$ %{y:,.0f}<extra></extra>"
             )
 
-        # -------- DESVIO (somente dias válidos)
-        g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
-        g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
-
+        g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)]
         fig.add_bar(
-            row=2,
-            col=1,
+            row=2, col=1,
             x=[f"D+{d}" for d in g_desvio.index],
-            y=g_desvio["DESVIO"],
-            marker_color=[
-                "#EA9411" if v >= 0 else "gray"
-                for v in g_desvio["DESVIO"]
-            ],
-            hovertemplate=(
-                "<b>%{x}</b><br>"
-                "Desvio: R$ %{y:,.0f}"
-                "<extra></extra>"
-            ),
+            y=g_desvio[mes_b] - g_desvio[mes_a],
+            marker_color=["#EA9411" if v >= 0 else "gray" for v in (g_desvio[mes_b] - g_desvio[mes_a])],
+            hovertemplate="<b>%{x}</b><br>Desvio: R$ %{y:,.0f}<extra></extra>",
             showlegend=False
         )
 
-        # Linha zero no desvio
         fig.add_hline(y=0, row=2, col=1)
 
-        # Layout final
         fig.update_layout(
             height=550,
             barmode="group",
-            xaxis_title="Dia útil",
             yaxis_title="VLRAF",
-            yaxis2_title="Δ VLRAF"
+            yaxis2_title="Δ VLRAF",
+            xaxis_title="Dia útil"
         )
 
         st.plotly_chart(fig, use_container_width=True)
