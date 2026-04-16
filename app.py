@@ -74,13 +74,16 @@ def aplicar_estilo_plotly(fig):
     )
     return fig
     
-MAPA_CORES = {
-    "NOVO": "#1f77b4",          # azul
-    "corte": "#1f77b4",
-    "REFIN": "#EA9411",         # laranja
-    "24": "#EA9411",
-    "PORTABILIDADE": "#6f42c1",          # roxo
-    "REFIN DA PORT": "#2ca02c"  # verde
+MAPA_CORES_PAGAMENTO = {
+    "24": "#1f77b4",
+    "corte": "#EA9411"
+}
+
+MAPA_CORES_PRODUTO = {
+    "NOVO": "#1f77b4",
+    "REFIN": "#EA9411",
+    "PORTABILIDADE": "#6f42c1",
+    "REFIN DA PORT": "#2ca02c"
 }
 
 df = adicionar_dia_util(df)
@@ -185,7 +188,7 @@ with tab1:
             x=eixo_x,
             y=g_acum[col],
             showlegend=False,
-            marker_color=MAPA_CORES.get(col, "gray"),
+            marker_color=mapa_cores = MAPA_CORES_PAGAMENTO if classificacao == "COMISSAO_DIFERIDA" else MAPA_CORES_PRODUTO,
             hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
         )
 
