@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import mplcursors
 
 # =================================================
 # CONFIGURAÇÃO
@@ -56,7 +57,7 @@ def adicionar_dia_util(df):
     return df
 
 # =================================================
-# SIDEBAR – FILTROS GLOBAIS
+# SIDEBAR – FILTROS
 # =================================================
 st.sidebar.title("Filtros")
 
@@ -124,23 +125,37 @@ with tab1:
 
     fig, axs = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
 
-    g.plot(kind="bar", ax=axs[0])
+    bars1 = g.plot(kind="bar", ax=axs[0])
     axs[0].set_title("VLRAF Diário")
     axs[0].legend()
 
-    g_acum.plot(kind="bar", ax=axs[1])
+    mplcursors.cursor(axs[0], hover=True).connect(
+        "add",
+        lambda sel: sel.annotation.set_text(
+            formatar_reais(sel.target[1])
+        )
+    )
+
+    bars2 = g_acum.plot(kind="bar", ax=axs[1])
     axs[1].set_title("VLRAF Acumulado")
     axs[1].set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
     axs[1].legend()
+
+    mplcursors.cursor(axs[1], hover=True).connect(
+        "add",
+        lambda sel: sel.annotation.set_text(
+            formatar_reais(sel.target[1])
+        )
+    )
 
     plt.tight_layout()
     st.pyplot(fig)
 
 # =================================================
-# TAB 2 — COMPARAÇÃO ENTRE MESES
+# TAB 2 — DESVIO ENTRE MESES (SUBPLOTS POR PRODUTO)
 # =================================================
 with tab2:
-    st.subheader("Comparação entre meses (Consignado x Débito)")
+    st.subheader("Desvio diário entre meses por produto")
 
     meses = sorted(df["MES"].unique())
     col1, col2 = st.columns(2)
@@ -148,22 +163,39 @@ with tab2:
     mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
 
     base = df[df["MES"].isin([mes_a, mes_b])]
+    produtos = sorted(base["GRUPO PRODUTO"].unique())
 
-    fig, axs = plt.subplots(2, 1, figsize=(18, 10), sharex=True)
+    fig, axs = plt.subplots(len(produtos), 1, figsize=(18, 5 * len(produtos)), sharex=True)
 
-    for idx, grupo in enumerate(["CONSIGNADO", "DÉBITO"]):
-        sub = base[base["GRUPO PRODUTO"] == grupo]
+    if len(produtos) == 1:
+        axs = [axs]
+
+    for idx, prod in enumerate(produtos):
+        sub = base[base["GRUPO PRODUTO"] == prod]
+
         g = (
             sub.groupby(["MES", "DIA_UTIL"])["VLRAF"]
             .sum()
             .unstack("MES", fill_value=0)
         )
-        g.plot(kind="bar", ax=axs[idx])
-        axs[idx].set_title(grupo)
-        axs[idx].legend(title="Mês")
 
-    axs[1].set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
-    axs[1].set_xlabel("Dia útil")
+        g["DESVIO"] = g.get(mes_b, 0) - g.get(mes_a, 0)
+        cores = np.where(g["DESVIO"] >= 0, "green", "red")
+
+        bars = axs[idx].bar(g.index, g["DESVIO"], color=cores)
+        axs[idx].axhline(0, color="black", linewidth=1)
+        axs[idx].set_title(prod)
+        axs[idx].set_ylabel("Δ VLRAF")
+
+        mplcursors.cursor(bars, hover=True).connect(
+            "add",
+            lambda sel: sel.annotation.set_text(
+                f"D+{int(sel.target[0])}\n{formatar_reais(sel.target[1])}"
+            )
+        )
+
+    axs[-1].set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
+    axs[-1].set_xlabel("Dia útil")
 
     plt.tight_layout()
     st.pyplot(fig)
