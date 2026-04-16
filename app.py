@@ -155,7 +155,7 @@ with tab1:
     
     # >>> COLE AQUI <<<
     if classificacao == "COMISSAO_DIFERIDA":
-        ordem = ["CORTE", "24"]
+        ordem = ["corte", "24"]
         g = g.reindex(columns=ordem)
         g_acum = g_acum.reindex(columns=ordem)
     # >>> FIM DO AJUSTE <<<
