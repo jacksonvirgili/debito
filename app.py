@@ -158,7 +158,7 @@ with tab1:
             x=eixo_x,
             y=g[col],
             name=str(col),
-            showlegend=False
+            showlegend=False,
             marker_color=MAPA_CORES.get(col, "gray"),
             hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
         )
@@ -168,7 +168,7 @@ with tab1:
             row=2, col=1,
             x=eixo_x,
             y=g_acum[col],
-            showlegend=False
+            showlegend=False,
             marker_color=MAPA_CORES.get(col, "gray"),
             hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
         )
