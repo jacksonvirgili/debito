@@ -209,14 +209,28 @@ with tab2:
         )
 
         # -------- SUBPLOT DESVIO (MENOR) --------
+        # posições completas do eixo X (todos os dias do gráfico principal)
+        dias_completos = list(g.index)
+        x_all = np.arange(len(dias_completos))
+        
+        # posições apenas dos dias válidos para desvio
+        x_desvio = [dias_completos.index(d) for d in g_desvio.index]
+        
         bars = ax_dev.bar(
-            g_desvio.index,
+            x_desvio,
             g_desvio["DESVIO"],
-            color=cores
+            color=cores,
+            width=0.8
         )
+        
         ax_dev.axhline(0, color="black", linewidth=1)
         ax_dev.set_ylabel("Δ VLRAF")
         ax_dev.set_xlabel("Dia útil")
+        
+        # mantém exatamente o mesmo eixo X do gráfico principal
+        ax_dev.set_xlim(-0.5, len(dias_completos) - 0.5)
+        ax_dev.set_xticks(x_all)
+        ax_dev.set_xticklabels([f"D+{d}" for d in dias_completos], rotation=0)
 
         mplcursors.cursor(bars, hover=True).connect(
             "add",
