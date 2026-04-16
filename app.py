@@ -155,22 +155,21 @@ with tab1:
 # TAB 2 — DESVIO ENTRE MESES (SUBPLOTS POR PRODUTO)
 # =================================================
 with tab2:
-    st.subheader("Desvio diário entre meses por produto")
+    st.subheader("Comparação entre meses com desvio diário")
 
     meses = sorted(df["MES"].unique())
     col1, col2 = st.columns(2)
     mes_a = col1.selectbox("Mês A", meses)
-    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
+    mes_b = col2.selectbox(
+        "Mês B", meses, index=1 if len(meses) > 1 else 0
+    )
 
     base = df[df["MES"].isin([mes_a, mes_b])]
     produtos = sorted(base["GRUPO PRODUTO"].unique())
 
-    fig, axs = plt.subplots(len(produtos), 1, figsize=(18, 5 * len(produtos)), sharex=True)
+    for prod in produtos:
+        st.markdown(f"### {prod}")
 
-    if len(produtos) == 1:
-        axs = [axs]
-
-    for idx, prod in enumerate(produtos):
         sub = base[base["GRUPO PRODUTO"] == prod]
 
         g = (
@@ -179,13 +178,38 @@ with tab2:
             .unstack("MES", fill_value=0)
         )
 
-        g["DESVIO"] = g.get(mes_b, 0) - g.get(mes_a, 0)
+        # garante colunas
+        g[mes_a] = g.get(mes_a, 0)
+        g[mes_b] = g.get(mes_b, 0)
+
+        g["DESVIO"] = g[mes_b] - g[mes_a]
         cores = np.where(g["DESVIO"] >= 0, "green", "red")
 
-        bars = axs[idx].bar(g.index, g["DESVIO"], color=cores)
-        axs[idx].axhline(0, color="black", linewidth=1)
-        axs[idx].set_title(prod)
-        axs[idx].set_ylabel("Δ VLRAF")
+        # ===== FIGURA COM GRID (principal + auxiliary) =====
+        fig = plt.figure(figsize=(18, 8))
+        gs = fig.add_gridspec(2, 1, height_ratios=[3, 1], hspace=0.15)
+
+        ax_main = fig.add_subplot(gs[0])
+        ax_dev = fig.add_subplot(gs[1], sharex=ax_main)
+
+        # -------- GRÁFICO PRINCIPAL --------
+        g[[mes_a, mes_b]].plot(kind="bar", ax=ax_main)
+        ax_main.set_title(f"{prod} – Comparação {mes_a} x {mes_b}")
+        ax_main.set_ylabel("VLRAF")
+        ax_main.legend(title="Mês")
+
+        mplcursors.cursor(ax_main, hover=True).connect(
+            "add",
+            lambda sel: sel.annotation.set_text(
+                formatar_reais(sel.target[1])
+            )
+        )
+
+        # -------- SUBPLOT DESVIO (MENOR) --------
+        bars = ax_dev.bar(g.index, g["DESVIO"], color=cores)
+        ax_dev.axhline(0, color="black", linewidth=1)
+        ax_dev.set_ylabel("Δ VLRAF")
+        ax_dev.set_xlabel("Dia útil")
 
         mplcursors.cursor(bars, hover=True).connect(
             "add",
@@ -194,8 +218,6 @@ with tab2:
             )
         )
 
-    axs[-1].set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
-    axs[-1].set_xlabel("Dia útil")
+        ax_dev.set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
 
-    plt.tight_layout()
-    st.pyplot(fig)
+        st.pyplot(fig)
