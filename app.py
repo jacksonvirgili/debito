@@ -150,8 +150,16 @@ with tab1:
         .sum()
         .unstack(fill_value=0)
     )
-
+    
     g_acum = g.cumsum()
+    
+    # >>> COLE AQUI <<<
+    if classificacao == "COMISSAO_DIFERIDA":
+        ordem = ["CORTE", "24"]
+        g = g.reindex(columns=ordem)
+        g_acum = g_acum.reindex(columns=ordem)
+    # >>> FIM DO AJUSTE <<<
+    
     eixo_x = [f"D+{d}" for d in g.index]
 
     fig = make_subplots(
