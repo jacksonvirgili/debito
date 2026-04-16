@@ -89,7 +89,7 @@ df = adicionar_dia_util(df)
 tab1, tab2 = st.tabs(["Análise Diária", "Comparação entre Meses"])
 
 # =================================================
-# TAB 1 — ANÁLISE DIÁRIA (MANTIDO EM MATPLOTLIB)
+# TAB 1 — MATPLOTLIB (SEM HOVER)
 # =================================================
 with tab1:
     st.subheader("Análise diária por classificação")
@@ -132,19 +132,18 @@ with tab1:
     axs[1].set_title("VLRAF Acumulado")
     axs[1].set_xticklabels([f"D+{d}" for d in g.index], rotation=0)
 
-    plt.tight_layout()
     st.pyplot(fig)
 
 # =================================================
-# TAB 2 — COMPARAÇÃO + DESVIO (PLOTLY)
+# TAB 2 — PLOTLY (HOVER FUNCIONANDO)
 # =================================================
 with tab2:
     st.subheader("Comparação entre meses com desvio diário")
 
     meses = sorted(df["MES"].unique())
-    col1, col2 = st.columns(2)
-    mes_a = col1.selectbox("Mês A", meses)
-    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
+    c1, c2 = st.columns(2)
+    mes_a = c1.selectbox("Mês A", meses)
+    mes_b = c2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
 
     base = df[df["MES"].isin([mes_a, mes_b])]
     produtos = sorted(base["GRUPO PRODUTO"].unique())
@@ -160,9 +159,9 @@ with tab2:
             .unstack("MES", fill_value=0)
         )
 
-        # ===================
+        # ---------------------------
         # GRÁFICO PRINCIPAL
-        # ===================
+        # ---------------------------
         fig_main = go.Figure()
 
         for mes in [mes_a, mes_b]:
@@ -170,7 +169,11 @@ with tab2:
                 x=[f"D+{d}" for d in g.index],
                 y=g.get(mes, 0),
                 name=mes,
-                hovertemplate="%{x}<br>" + mes + ": %{y:,.0f}<extra></extra>"
+                hovertemplate=(
+                    "<b>%{x}</b><br>"
+                    f"{mes}: R$ %{y:,.0f}"
+                    "<extra></extra>"
+                )
             )
 
         fig_main.update_layout(
@@ -181,9 +184,9 @@ with tab2:
 
         st.plotly_chart(fig_main, use_container_width=True)
 
-        # ===================
-        # DESVIO (SOMENTE DIAS VÁLIDOS)
-        # ===================
+        # ---------------------------
+        # DESVIO (SÓ DIAS VÁLIDOS)
+        # ---------------------------
         g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
         g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
 
@@ -192,17 +195,18 @@ with tab2:
         fig_dev.add_bar(
             x=[f"D+{d}" for d in g_desvio.index],
             y=g_desvio["DESVIO"],
-            marker_color=[
-                "green" if v >= 0 else "red"
-                for v in g_desvio["DESVIO"]
-            ],
-            hovertemplate="%{x}<br>Desvio: %{y:,.0f}<extra></extra>"
+            marker_color=["green" if v >= 0 else "red" for v in g_desvio["DESVIO"]],
+            hovertemplate=(
+                "<b>%{x}</b><br>"
+                "Desvio: R$ %{y:,.0f}"
+                "<extra></extra>"
+            )
         )
 
         fig_dev.add_hline(y=0)
 
         fig_dev.update_layout(
-            height=200,
+            height=220,
             yaxis_title="Δ VLRAF",
             showlegend=False
         )
