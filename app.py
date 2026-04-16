@@ -72,6 +72,13 @@ def aplicar_estilo_plotly(fig):
         zeroline=False
     )
     return fig
+    
+MAPA_CORES = {
+    "NOVO": "#1f77b4",          # azul
+    "REFIN": "#EA9411",         # laranja
+    "PORT": "#6f42c1",          # roxo
+    "REFIN DA PORT": "#2ca02c"  # verde
+}
 
 df = adicionar_dia_util(df)
 
@@ -149,6 +156,7 @@ with tab1:
             x=eixo_x,
             y=g[col],
             name=str(col),
+            marker_color=MAPA_CORES.get(col, "gray"),
             hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
         )
 
@@ -157,7 +165,7 @@ with tab1:
             row=2, col=1,
             x=eixo_x,
             y=g_acum[col],
-            showlegend=False,
+            marker_color=MAPA_CORES.get(col, "gray"),
             hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
         )
 
