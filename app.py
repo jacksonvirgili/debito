@@ -104,10 +104,7 @@ with tab1:
         ["COMISSAO_DIFERIDA", "TIPO PRODUTO"]
     )
 
-    mes = st.selectbox(
-        "Mês",
-        sorted(df["MES"].unique())
-    )
+    mes = st.selectbox("Mês", sorted(df["MES"].unique()))
 
     base = df[df["MES"] == mes]
 
@@ -159,9 +156,9 @@ with tab2:
             .unstack("MES", fill_value=0)
         )
 
-        # ---------------------------
+        # ----------------------------
         # GRÁFICO PRINCIPAL
-        # ---------------------------
+        # ----------------------------
         fig_main = go.Figure()
 
         for mes in [mes_a, mes_b]:
@@ -171,7 +168,8 @@ with tab2:
                 name=mes,
                 hovertemplate=(
                     "<b>%{x}</b><br>"
-                    f"{mes}: R$ %{y:,.0f}"
+                    + mes +
+                    ": R$ %{y:,.0f}"
                     "<extra></extra>"
                 )
             )
@@ -184,9 +182,9 @@ with tab2:
 
         st.plotly_chart(fig_main, use_container_width=True)
 
-        # ---------------------------
-        # DESVIO (SÓ DIAS VÁLIDOS)
-        # ---------------------------
+        # ----------------------------
+        # DESVIO (APENAS DIAS COMPARÁVEIS)
+        # ----------------------------
         g_desvio = g[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
         g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
 
@@ -195,7 +193,10 @@ with tab2:
         fig_dev.add_bar(
             x=[f"D+{d}" for d in g_desvio.index],
             y=g_desvio["DESVIO"],
-            marker_color=["green" if v >= 0 else "red" for v in g_desvio["DESVIO"]],
+            marker_color=[
+                "green" if v >= 0 else "red"
+                for v in g_desvio["DESVIO"]
+            ],
             hovertemplate=(
                 "<b>%{x}</b><br>"
                 "Desvio: R$ %{y:,.0f}"
