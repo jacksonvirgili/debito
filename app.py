@@ -178,7 +178,7 @@ with tab1:
             x=eixo_x,
             y=g[col],
             name=str(col),
-            marker_color=MAPA_CORES.get(col, "gray"),
+            marker_color=mapa_cores.get(col, "gray"),
             hovertemplate="<b>%{x}</b><br>" + str(col) + ": R$ %{y:,.0f}<extra></extra>"
         )
 
