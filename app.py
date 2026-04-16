@@ -126,10 +126,18 @@ with tab1:
         ["Todos"] + sorted(df["GRUPO PRODUTO"].unique())
     )
 
-    classificacao = st.radio(
+    classificacao_label = st.radio(
         "Classificar por:",
-        ["COMISSAO_DIFERIDA", "TIPO PRODUTO"]
+        ["TIPO PAGAMENTO", "TIPO PRODUTO"]
     )
+    
+    # Mapeamento UX → coluna real
+    MAPA_CLASSIFICACAO = {
+        "TIPO PAGAMENTO": "COMISSAO_DIFERIDA",
+        "TIPO PRODUTO": "TIPO PRODUTO"
+    }
+    
+    classificacao = MAPA_CLASSIFICACAO[classificacao_label]
 
     mes = st.selectbox("Mês", sorted(df["MES"].unique()))
 
