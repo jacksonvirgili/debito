@@ -263,26 +263,78 @@ with tab2:
         st.markdown(f"### {prod}")
 
         sub = base[base["GRUPO PRODUTO"] == prod]
-        g = sub.groupby(["MES", "DIA_UTIL"])["VLRAF"].sum().unstack("MES", fill_value=0)
+
+        # ===============================
+        # BASE DIÁRIA
+        # ===============================
+        g = (
+            sub.groupby(["MES", "DIA_UTIL"])["VLRAF"]
+            .sum()
+            .unstack("MES", fill_value=0)
+        )
 
         eixo_x = [f"D+{d}" for d in g.index]
 
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
+        # ===============================
+        # ACUMULADO
+        # ===============================
+        g_acum = g.cumsum()
 
-        for mes in [mes_a, mes_b]:
-            fig.add_bar(row=1, col=1, x=eixo_x, y=g[mes], name=mes)
-
+        # ===============================
+        # DESVIO DIÁRIO
+        # ===============================
         g_desvio = g.loc[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
         g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
 
-        fig.add_bar(row=2, col=1,
-                    x=[f"D+{d}" for d in g_desvio.index],
-                    y=g_desvio["DESVIO"])
+        # ===============================
+        # DESVIO ACUMULADO
+        # ===============================
+        g_desvio_acum = g_desvio.copy()
+        if not g_desvio_acum.empty:
+            g_desvio_acum["DESVIO_ACUM"] = g_desvio_acum["DESVIO"].cumsum()
+
+        # ===============================
+        # GRÁFICO
+        # ===============================
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+            row_heights=[0.7, 0.3]
+        )
+
+        cores = {mes_a: "gray", mes_b: "#EA9411"}
+
+        for mes in [mes_a, mes_b]:
+            fig.add_bar(
+                row=1, col=1,
+                x=eixo_x,
+                y=g[mes],
+                name=mes,
+                marker_color=cores[mes],
+                hovertemplate=f"<b>%{{x}}</b><br>{mes}: R$ %{{y:,.0f}}<extra></extra>"
+            )
+
+        fig.add_bar(
+            row=2, col=1,
+            x=[f"D+{d}" for d in g_desvio.index],
+            y=g_desvio["DESVIO"],
+            marker_color=["#EA9411" if v >= 0 else "gray" for v in g_desvio["DESVIO"]],
+            showlegend=False,
+            hovertemplate="<b>%{x}</b><br>Desvio: R$ %{y:,.0f}<extra></extra>"
+        )
+
+        fig.add_hline(y=0, row=2, col=1)
+
+        fig.update_yaxes(title_text="VLRAF", row=1, col=1)
+        fig.update_yaxes(title_text="Δ VLRAF", row=2, col=1)
+        fig.update_xaxes(title_text="Dia Útil", row=2, col=1)
 
         fig = aplicar_estilo_plotly(fig)
+        fig.update_layout(height=550)
+
         st.plotly_chart(fig, use_container_width=True)
 
-        # TABELAS
         # ===============================
         # TABELA UNIFICADA
         # ===============================
@@ -290,34 +342,33 @@ with tab2:
             tabela_unificada = pd.concat(
                 {
                     "Diário": g,
-                    "Desvio": g_desvio[["DESVIO"]]
+                    "Acumulado": g_acum,
+                    "Desvio": g_desvio[["DESVIO"]],
+                    "Desvio Acumulado": g_desvio_acum[["DESVIO_ACUM"]]
                 },
                 axis=1
             )
         else:
-            tabela_unificada = g.copy()
-        
+            tabela_unificada = pd.concat(
+                {
+                    "Diário": g,
+                    "Acumulado": g_acum
+                },
+                axis=1
+            )
+
         st.dataframe(formatar_tabela(tabela_unificada))
-        
-        # Excel
+
+        # ===============================
+        # EXCEL
+        # ===============================
         excel = gerar_excel({
             "Resumo": tabela_unificada
         })
-        
+
         st.download_button(
             f"📥 Baixar Excel - {prod}",
             data=excel,
             file_name=f"{prod}_{mes_a}_{mes_b}.xlsx",
             key=f"download_{prod}_{mes_a}_{mes_b}"
-        )
-
-        excel = gerar_excel({
-            "Comparacao": g,
-            "Desvio": g_desvio if not g_desvio.empty else pd.DataFrame()
-        })
-
-        st.download_button(
-            f"📥 Baixar Excel - {prod}",
-            data=excel,
-            file_name=f"{prod}_{mes_a}_{mes_b}.xlsx"
         )
