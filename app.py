@@ -213,9 +213,11 @@ with tab2:
         g = (
             sub.groupby(["MES", "DIA_UTIL"])["VLRAF"]
             .sum()
-            .unstack(fill_value=0)
+            .unstack()
+            .reindex(columns=[mes_a, mes_b], fill_value=0)
             .sort_index()
         )
+
 
         eixo_x = [f"D+{d}" for d in g.index]
         desvio = g[mes_b] - g[mes_a]
