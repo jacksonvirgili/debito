@@ -45,6 +45,7 @@ def adicionar_dia_util(df):
         (df["DATA_EFETIVACAO"].dt.weekday < 5) &
         (~df["DATA_EFETIVACAO"].isin(FERIADOS_BR))
     ]
+    df = df.copy()
     df["MES"] = df["DATA_EFETIVACAO"].dt.strftime("%Y-%m")
     df["DIA_UTIL"] = df.groupby("MES")["DATA_EFETIVACAO"].rank("dense").astype(int)
     return df
@@ -64,11 +65,7 @@ def aplicar_estilo_plotly(fig):
         ),
     )
     fig.update_xaxes(showline=False)
-    fig.update_yaxes(
-        showgrid=True,
-        gridcolor="rgba(0,0,0,0.15)",
-        zeroline=False
-    )
+    fig.update_yaxes(showgrid=True, gridcolor="rgba(0,0,0,0.15)", zeroline=False)
     return fig
 
 def formatar_moeda(v):
@@ -81,8 +78,9 @@ def aplicar_cor_desvio(df):
     for i, v in df["Δ VLRAF"].items():
         n = float(v.replace("R$", "").replace(".", "").replace(",", "."))
         estilos.loc[i, "Δ VLRAF"] = (
-            "color:#1f77b4;font-weight:bold" if n >= 0
-            else "color:red;font-weight:bold"
+            "color:#1f77b4;font-weight:bold"
+            if n >= 0 else
+            "color:red;font-weight:bold"
         )
     return estilos
 
@@ -104,15 +102,9 @@ df = adicionar_dia_util(df)
 # =================================================
 st.sidebar.title("Filtros")
 
-regional = st.sidebar.selectbox(
-    "Regional", ["Todas"] + sorted(df["REGIONAIS"].dropna().unique())
-)
-coordenador = st.sidebar.selectbox(
-    "Coordenador", ["Todos"] + sorted(df["COORDENADOR"].dropna().unique())
-)
-loja = st.sidebar.selectbox(
-    "Loja", ["Todas"] + sorted(df["DESCRICAO_LOJA"].dropna().unique())
-)
+regional = st.sidebar.selectbox("Regional", ["Todas"] + sorted(df["REGIONAIS"].dropna().unique()))
+coordenador = st.sidebar.selectbox("Coordenador", ["Todos"] + sorted(df["COORDENADOR"].dropna().unique()))
+loja = st.sidebar.selectbox("Loja", ["Todas"] + sorted(df["DESCRICAO_LOJA"].dropna().unique()))
 
 if regional != "Todas":
     df = df[df["REGIONAIS"] == regional]
@@ -132,19 +124,9 @@ tab1, tab2 = st.tabs(["Análise Diária", "Comparação entre Meses"])
 with tab1:
     st.subheader("Análise diária por classificação")
 
-    grupo_produto = st.selectbox(
-        "Grupo Produto", ["Todos"] + sorted(df["GRUPO PRODUTO"].unique())
-    )
-
-    classificacao_label = st.radio(
-        "Classificar por:", ["TIPO PAGAMENTO", "TIPO PRODUTO"]
-    )
-
-    classificacao = {
-        "TIPO PAGAMENTO": "COMISSAO_DIFERIDA",
-        "TIPO PRODUTO": "TIPO PRODUTO"
-    }[classificacao_label]
-
+    grupo_produto = st.selectbox("Grupo Produto", ["Todos"] + sorted(df["GRUPO PRODUTO"].unique()))
+    classificacao_label = st.radio("Classificar por:", ["TIPO PAGAMENTO", "TIPO PRODUTO"])
+    classificacao = {"TIPO PAGAMENTO": "COMISSAO_DIFERIDA", "TIPO PRODUTO": "TIPO PRODUTO"}[classificacao_label]
     mes = st.selectbox("Mês", sorted(df["MES"].unique()))
 
     base = df[df["MES"] == mes]
@@ -168,27 +150,16 @@ with tab1:
 
     eixo_x = [f"D+{d}" for d in g.index]
 
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=True,
-        subplot_titles=("VLRAF Diário", "VLRAF Acumulado")
-    )
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        subplot_titles=("VLRAF Diário", "VLRAF Acumulado"))
 
     for col in g.columns:
-        fig.add_bar(
-            row=1, col=1,
-            x=eixo_x, y=g[col],
-            name=col,
-            marker_color=mapa_cores.get(col, "gray")
-        )
+        fig.add_bar(row=1, col=1, x=eixo_x, y=g[col],
+                    name=col, marker_color=mapa_cores.get(col, "gray"))
 
     for col in g_acum.columns:
-        fig.add_bar(
-            row=2, col=1,
-            x=eixo_x, y=g_acum[col],
-            showlegend=False,
-            marker_color=mapa_cores.get(col, "gray")
-        )
+        fig.add_bar(row=2, col=1, x=eixo_x, y=g_acum[col],
+                    showlegend=False, marker_color=mapa_cores.get(col, "gray"))
 
     fig = aplicar_estilo_plotly(fig)
     st.plotly_chart(fig, use_container_width=True)
@@ -201,8 +172,8 @@ with tab2:
 
     meses = sorted(df["MES"].unique())
     col1, col2 = st.columns(2)
-    mes_a = col1.selectbox("Mês A", meses)
-    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
+    mes_a = col1.selectbox("Mês A", meses, key="mes_a")
+    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0, key="mes_b")
 
     base = df[df["MES"].isin([mes_a, mes_b])]
 
@@ -210,6 +181,7 @@ with tab2:
         st.markdown(f"### {prod}")
 
         sub = base[base["GRUPO PRODUTO"] == prod]
+
         g = (
             sub.groupby(["MES", "DIA_UTIL"])["VLRAF"]
             .sum()
@@ -218,27 +190,13 @@ with tab2:
             .sort_index()
         )
 
-
         eixo_x = [f"D+{d}" for d in g.index]
         desvio = g[mes_b] - g[mes_a]
 
-        fig = make_subplots(
-            rows=2, cols=1,
-            shared_xaxes=True,
-            row_heights=[0.7, 0.3]
-        )
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
 
-        fig.add_bar(
-            row=1, col=1,
-            x=eixo_x, y=g[mes_a],
-            name=mes_a, marker_color="gray"
-        )
-
-        fig.add_bar(
-            row=1, col=1,
-            x=eixo_x, y=g[mes_b],
-            name=mes_b, marker_color="#EA9411"
-        )
+        fig.add_bar(row=1, col=1, x=eixo_x, y=g[mes_a], name=mes_a, marker_color="gray")
+        fig.add_bar(row=1, col=1, x=eixo_x, y=g[mes_b], name=mes_b, marker_color="#EA9411")
 
         fig.add_bar(
             row=2, col=1,
@@ -251,4 +209,8 @@ with tab2:
         fig = aplicar_estilo_plotly(fig)
         fig.update_layout(height=550)
 
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            key=f"grafico_{prod}_{mes_a}_{mes_b}"
+        )
