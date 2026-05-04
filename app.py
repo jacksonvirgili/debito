@@ -144,48 +144,79 @@ with tab1:
 # TAB 2 — COMPARAÇÃO ENTRE MESES
 # =================================================
 with tab2:
-    st.subheader("Comparação entre meses")
+    st.subheader("Comparação entre meses com desvio diário")
 
     meses = sorted(df["MES"].unique())
     col1, col2 = st.columns(2)
+
     mes_a = col1.selectbox("Mês A", meses)
-    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
+    mes_b = col2.selectbox(
+        "Mês B",
+        meses,
+        index=1 if len(meses) > 1 else 0
+    )
 
     base = df[df["MES"].isin([mes_a, mes_b])]
+    produtos = sorted(base["GRUPO PRODUTO"].unique())
 
-    for prod in sorted(base["GRUPO PRODUTO"].unique()):
+    for prod in produtos:
         st.markdown(f"### {prod}")
+
         sub = base[base["GRUPO PRODUTO"] == prod]
 
-        # Agrupamento base
+        # =================================================
+        # AGREGAÇÃO ROBUSTA (dias úteis diferentes OK)
+        # =================================================
         g = (
             sub
             .groupby(["MES", "DIA_UTIL"])["VLRAF"]
             .sum()
             .unstack()
         )
-        
-        # ✅ garante todos os dias úteis existentes
+
+        # valores ausentes viram zero
         g = g.fillna(0)
-        
-        # ✅ garante as colunas dos dois meses
+
+        # garante colunas dos dois meses
         for m in [mes_a, mes_b]:
             if m not in g.columns:
                 g[m] = 0
-        
-        # ✅ reordena explicitamente
+
+        # ordem explícita
         g = g[[mes_a, mes_b]]
-        
-        # ✅ desvio (zero vale zero)
+
+        # desvio (zero vale zero)
         g["DESVIO"] = g[mes_b] - g[mes_a]
 
+        # eixo x
+        eixo_x = [f"D+{int(d)}" for d in g.index]
 
-        eixo_x = [f"D+{d}" for d in g.index]
+        # =================================================
+        # GRÁFICO (inalterado conceitualmente)
+        # =================================================
+        fig = make_subplots(
+            rows=2,
+            cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+            row_heights=[0.7, 0.3]
+        )
 
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
+        fig.add_bar(
+            row=1, col=1,
+            x=eixo_x,
+            y=g[mes_a],
+            name=mes_a,
+            marker_color="gray"
+        )
 
-        fig.add_bar(row=1, col=1, x=eixo_x, y=g[mes_a], name=mes_a)
-        fig.add_bar(row=1, col=1, x=eixo_x, y=g[mes_b], name=mes_b)
+        fig.add_bar(
+            row=1, col=1,
+            x=eixo_x,
+            y=g[mes_b],
+            name=mes_b,
+            marker_color="#EA9411"
+        )
 
         fig.add_bar(
             row=2, col=1,
@@ -196,50 +227,71 @@ with tab2:
         )
 
         fig.add_hline(y=0, row=2, col=1)
+
+        fig.update_yaxes(title_text="VLRAF", row=1, col=1)
+        fig.update_yaxes(title_text="Δ VLRAF", row=2, col=1)
+        fig.update_xaxes(title_text="Dia Útil", row=2, col=1)
+
         fig = aplicar_estilo_plotly(fig)
+        fig.update_layout(height=550)
+
         st.plotly_chart(fig, use_container_width=True)
 
-        # ================= TABELA =================
+        # =================================================
+        # TABELA – COMPARAÇÃO ENTRE MESES (SEM RISCO DE ERRO)
+        # =================================================
+        g.index.name = "DIA_UTIL"
+        tabela = g.reset_index()
+
+        tabela["Dia Útil"] = tabela["DIA_UTIL"].apply(lambda x: f"D+{int(x)}")
+
+        # datas reais por mês (podem não existir em todos os dias)
         datas = (
-            sub.groupby(["MES", "DIA_UTIL"])["DATA_EFETIVACAO"]
-            .first().reset_index()
+            sub
+            .groupby(["MES", "DIA_UTIL"])["DATA_EFETIVACAO"]
+            .first()
+            .reset_index()
         )
 
-        tabela = g.reset_index()
-        tabela["Dia Útil"] = tabela["DIA_UTIL"].apply(lambda x: f"D+{x}")
+        datas_a = (
+            datas[datas["MES"] == mes_a]
+            .set_index("DIA_UTIL")["DATA_EFETIVACAO"]
+        )
 
-        tabela = tabela.merge(
-            datas[datas["MES"] == mes_a][["DIA_UTIL", "DATA_EFETIVACAO"]],
-            on="DIA_UTIL",
-            how="left"
-        ).rename(columns={"DATA_EFETIVACAO": f"Data {mes_a}"})
+        datas_b = (
+            datas[datas["MES"] == mes_b]
+            .set_index("DIA_UTIL")["DATA_EFETIVACAO"]
+        )
 
-        tabela = tabela.merge(
-            datas[datas["MES"] == mes_b][["DIA_UTIL", "DATA_EFETIVACAO"]],
-            on="DIA_UTIL",
-            how="left"
-        ).rename(columns={"DATA_EFETIVACAO": f"Data {mes_b}"})
+        tabela[f"Data {mes_a}"] = tabela["DIA_UTIL"].map(datas_a).dt.strftime("%d/%m/%Y")
+        tabela[f"Data {mes_b}"] = tabela["DIA_UTIL"].map(datas_b).dt.strftime("%d/%m/%Y")
 
-        tabela[f"Data {mes_a}"] = tabela[f"Data {mes_a}"].dt.strftime("%d/%m/%Y")
-        tabela[f"Data {mes_b}"] = tabela[f"Data {mes_b}"].dt.strftime("%d/%m/%Y")
-
-        for c in [mes_a, mes_b, "DESVIO"]:
-            tabela[c] = tabela[c].apply(formatar_moeda)
+        # formatação moeda
+        for col in [mes_a, mes_b, "DESVIO"]:
+            tabela[col] = tabela[col].apply(formatar_moeda)
 
         tabela_final = tabela[
-            ["Dia Útil", f"Data {mes_a}", f"Data {mes_b}", mes_a, mes_b, "DESVIO"]
+            [
+                "Dia Útil",
+                f"Data {mes_a}",
+                f"Data {mes_b}",
+                mes_a,
+                mes_b,
+                "DESVIO"
+            ]
         ]
 
         st.dataframe(
-            tabela_final.style.applymap(estilo_desvio, subset=["DESVIO"]),
+            tabela_final.style.applymap(
+                estilo_desvio, subset=["DESVIO"]
+            ),
             use_container_width=True,
             hide_index=True
         )
 
         st.download_button(
-            f"⬇️ Download comparação – {prod}",
+            f"⬇️ Baixar comparação – {prod}",
             tabela_final.to_csv(index=False, sep=";", encoding="utf-8-sig"),
             file_name=f"comparacao_{prod}_{mes_a}_vs_{mes_b}.csv",
             mime="text/csv"
         )
-
