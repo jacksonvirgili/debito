@@ -220,12 +220,13 @@ with tab2:
         # TRANSFORMAR EM DATA + VALOR
         # ===============================
         for mes in [mes_a, mes_b]:
-            g[(mes, "VALOR")] = g[mes]
-            g[(mes, "DATA")] = mapa_data[mes]
-            g.drop(columns=mes, inplace=True)
+            if mes in g.columns:
+                g[(mes, "VALOR")] = g[mes]
+                g[(mes, "DATA")] = mapa_data[mes]
+                g.drop(columns=mes, inplace=True)
 
         # ===============================
-        # ORGANIZAR COLUNAS (ROBUSTO)
+        # ORGANIZAR COLUNAS
         # ===============================
         g.columns = pd.MultiIndex.from_tuples(g.columns)
         g.columns.names = ["MÊS", "TIPO"]
@@ -279,7 +280,6 @@ with tab2:
         eixo_x = [f"D+{d}" for d in g.index]
         cores = {mes_a: "gray", mes_b: "#EA9411"}
 
-        # barras principais
         if (mes_a, "VALOR") in g.columns:
             fig.add_bar(
                 row=1, col=1,
@@ -298,7 +298,6 @@ with tab2:
                 marker_color=cores[mes_b]
             )
 
-        # desvio
         fig.add_bar(
             row=2, col=1,
             x=eixo_x,
@@ -313,6 +312,12 @@ with tab2:
         fig.update_layout(height=550)
 
         st.plotly_chart(fig, use_container_width=True)
+
+        # ===============================
+        # AJUSTE MULTIINDEX PARA CONCAT
+        # ===============================
+        g_desvio.columns = pd.MultiIndex.from_product([["DESVIO"], g_desvio.columns])
+        g_desvio_acum.columns = pd.MultiIndex.from_product([["DESVIO_ACUM"], g_desvio_acum.columns])
 
         # ===============================
         # TABELA UNIFICADA
