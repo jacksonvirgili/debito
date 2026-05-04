@@ -31,9 +31,12 @@ FERIADOS_BR = pd.to_datetime([
 def formatar_moeda(v):
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-def estilo_desvio(v):
-    cor = "red" if v < 0 else "blue"
-    return f"color: {cor}; font-weight: 600"
+def estilo_desvio_coluna(col):
+    return [
+        "color: red; font-weight: 600" if float(v.replace("R$", "").replace(".", "").replace(",", ".")) < 0
+        else "color: blue; font-weight: 600"
+        for v in col
+    ]
 
 def aplicar_estilo_plotly(fig):
     fig.update_layout(
@@ -107,7 +110,7 @@ with tab1:
     mes = st.selectbox("Mês", sorted(df["MES"].unique()))
     base = df[df["MES"] == mes]
 
-    g = base.groupby(["DIA_UTIL"])["VLRAF"].sum()
+    g = base.groupby("DIA_UTIL")["VLRAF"].sum()
 
     fig = go.Figure()
     fig.add_bar(
@@ -119,32 +122,8 @@ with tab1:
     fig = aplicar_estilo_plotly(fig)
     st.plotly_chart(fig, use_container_width=True)
 
-    # ================= TABELA =================
-    tabela = base.groupby(
-        ["DIA_UTIL", "DATA_EFETIVACAO"]
-    )["VLRAF"].sum().reset_index()
-
-    tabela["Dia Útil"] = tabela["DIA_UTIL"].apply(lambda x: f"D+{x}")
-    tabela["Data"] = tabela["DATA_EFETIVACAO"].dt.strftime("%d/%m/%Y")
-    tabela["VLRAF"] = tabela["VLRAF"].apply(formatar_moeda)
-
-    tabela_final = tabela[["Dia Útil", "Data", "VLRAF"]]
-
-    st.markdown("#### 📋 Tabela – Detalhe Diário")
-    st.dataframe(tabela_final, use_container_width=True, hide_index=True)
-
-    st.download_button(
-        "⬇️ Download tabela diária",
-        tabela_final.to_csv(index=False, sep=";", encoding="utf-8-sig"),
-        file_name=f"vlraf_diario_{mes}.csv",
-        mime="text/csv"
-    )
-
 # =================================================
-# TAB 2 — COMPARAÇÃO ENTRE MESES
-# =================================================
-# =================================================
-# TAB 2 — COMPARAÇÃO ENTRE MESES
+# TAB 2 — COMPARAÇÃO ENTRE MESES (COMPLETA)
 # =================================================
 with tab2:
     st.subheader("Comparação entre meses com desvio diário")
@@ -153,73 +132,43 @@ with tab2:
     col1, col2 = st.columns(2)
 
     mes_a = col1.selectbox("Mês A", meses)
-    mes_b = col2.selectbox(
-        "Mês B",
-        meses,
-        index=1 if len(meses) > 1 else 0
-    )
+    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
 
     base = df[df["MES"].isin([mes_a, mes_b])]
-    produtos = sorted(base["GRUPO PRODUTO"].unique())
+    produtos = sorted(base["GRUPO PRODUTO"].dropna().unique())
 
     for prod in produtos:
         st.markdown(f"### {prod}")
 
         sub = base[base["GRUPO PRODUTO"] == prod]
 
-        # =================================================
-        # AGREGAÇÃO ROBUSTA (dias úteis diferentes OK)
-        # =================================================
         g = (
             sub
             .groupby(["MES", "DIA_UTIL"])["VLRAF"]
             .sum()
             .unstack()
+            .fillna(0)
         )
 
-        # valores ausentes viram zero
-        g = g.fillna(0)
-
-        # garante colunas dos dois meses
         for m in [mes_a, mes_b]:
             if m not in g.columns:
                 g[m] = 0
 
-        # ordem explícita
         g = g[[mes_a, mes_b]]
-
-        # desvio (zero vale zero)
         g["DESVIO"] = g[mes_b] - g[mes_a]
 
-        # eixo X (NÃO força int → evita ValueError)
         eixo_x = [f"D+{d}" for d in g.index]
 
-        # =================================================
-        # GRÁFICO
-        # =================================================
         fig = make_subplots(
             rows=2,
             cols=1,
             shared_xaxes=True,
-            vertical_spacing=0.08,
-            row_heights=[0.7, 0.3]
+            row_heights=[0.7, 0.3],
+            vertical_spacing=0.08
         )
 
-        fig.add_bar(
-            row=1, col=1,
-            x=eixo_x,
-            y=g[mes_a],
-            name=mes_a,
-            marker_color="gray"
-        )
-
-        fig.add_bar(
-            row=1, col=1,
-            x=eixo_x,
-            y=g[mes_b],
-            name=mes_b,
-            marker_color="#EA9411"
-        )
+        fig.add_bar(row=1, col=1, x=eixo_x, y=g[mes_a], name=mes_a, marker_color="gray")
+        fig.add_bar(row=1, col=1, x=eixo_x, y=g[mes_b], name=mes_b, marker_color="#EA9411")
 
         fig.add_bar(
             row=2, col=1,
@@ -230,75 +179,27 @@ with tab2:
         )
 
         fig.add_hline(y=0, row=2, col=1)
-
         fig.update_yaxes(title_text="VLRAF", row=1, col=1)
         fig.update_yaxes(title_text="Δ VLRAF", row=2, col=1)
-        fig.update_xaxes(title_text="Dia Útil", row=2, col=1)
 
         fig = aplicar_estilo_plotly(fig)
         fig.update_layout(height=550)
 
         st.plotly_chart(fig, use_container_width=True)
 
-        # =================================================
-        # TABELA – COMPARAÇÃO ENTRE MESES
-        # =================================================
-        g.index.name = "DIA_UTIL"
         tabela = g.reset_index()
-
         tabela["Dia Útil"] = tabela["DIA_UTIL"].apply(lambda x: f"D+{x}")
 
-        # datas reais por mês (podem inexistir em alguns dias)
-        datas = (
-            sub
-            .groupby(["MES", "DIA_UTIL"])["DATA_EFETIVACAO"]
-            .first()
-            .reset_index()
-        )
-
-        datas_a = (
-            datas[datas["MES"] == mes_a]
-            .set_index("DIA_UTIL")["DATA_EFETIVACAO"]
-        )
-
-        datas_b = (
-            datas[datas["MES"] == mes_b]
-            .set_index("DIA_UTIL")["DATA_EFETIVACAO"]
-        )
-
-        tabela[f"Data {mes_a}"] = (
-            tabela["DIA_UTIL"].map(datas_a).dt.strftime("%d/%m/%Y")
-        )
-        tabela[f"Data {mes_b}"] = (
-            tabela["DIA_UTIL"].map(datas_b).dt.strftime("%d/%m/%Y")
-        )
-
-        # formatação moeda
         for col in [mes_a, mes_b, "DESVIO"]:
             tabela[col] = tabela[col].apply(formatar_moeda)
 
-        tabela_final = tabela[
-            [
-                "Dia Útil",
-                f"Data {mes_a}",
-                f"Data {mes_b}",
-                mes_a,
-                mes_b,
-                "DESVIO"
-            ]
-        ]
+        tabela_final = tabela[["Dia Útil", mes_a, mes_b, "DESVIO"]]
 
         st.dataframe(
-            tabela_final.style.applymap(
-                estilo_desvio, subset=["DESVIO"]
+            tabela_final.style.apply(
+                estilo_desvio_coluna,
+                subset=["DESVIO"]
             ),
             use_container_width=True,
             hide_index=True
-        )
-
-        st.download_button(
-            f"⬇️ Baixar comparação – {prod}",
-            tabela_final.to_csv(index=False, sep=";", encoding="utf-8-sig"),
-            file_name=f"comparacao_{prod}_{mes_a}_vs_{mes_b}.csv",
-            mime="text/csv"
         )
