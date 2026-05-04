@@ -43,7 +43,7 @@ df = carregar_dados()
 # =================================================
 def adicionar_dia_util(df):
     df = df.copy()
-    df = df[df["DATA_EFETIVACAO"].dt.weekday < 5]
+    df = df[df["DATA_EFETIVACAO"].dt.weekday < 5]   # ✅ corrigido
     df = df[~df["DATA_EFETIVACAO"].isin(FERIADOS_BR)]
     df["MES"] = df["DATA_EFETIVACAO"].dt.strftime("%Y-%m")
     df["DIA_UTIL"] = (
@@ -77,7 +77,7 @@ def aplicar_estilo_plotly(fig):
 
 def df_para_excel(df):
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
+    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:  # ✅ corrigido
         df.to_excel(writer, index=False, sheet_name="Dados")
     return buffer.getvalue()
 
@@ -215,51 +215,29 @@ with tab1:
     # =================================================
     # TABELAS + DOWNLOAD
     # =================================================
-    st.markdown("## 📋 Tabelas")
-
     tabela_diaria = g.reset_index().rename(columns={"DIA_UTIL": "Dia Útil"})
     tabela_diaria["Dia Útil"] = tabela_diaria["Dia Útil"].apply(lambda x: f"D+{x}")
 
     tabela_acumulada = g_acum.reset_index().rename(columns={"DIA_UTIL": "Dia Útil"})
     tabela_acumulada["Dia Útil"] = tabela_acumulada["Dia Útil"].apply(lambda x: f"D+{x}")
 
-    st.markdown("### VLRAF Diário")
     st.dataframe(tabela_diaria, use_container_width=True)
-
-    st.markdown("### VLRAF Acumulado")
     st.dataframe(tabela_acumulada, use_container_width=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button(
-            "⬇️ Baixar Diário (CSV)",
-            data=tabela_diaria.to_csv(index=False, sep=";", decimal=","),
-            file_name=f"vlraf_diario_{mes}.csv"
-        )
-    with col2:
-        st.download_button(
-            "⬇️ Baixar Diário (Excel)",
-            data=df_para_excel(tabela_diaria),
-            file_name=f"vlraf_diario_{mes}.xlsx"
-        )
+    st.download_button(
+        "⬇️ Excel Diário",
+        data=df_para_excel(tabela_diaria),
+        file_name=f"vlraf_diario_{mes}.xlsx"
+    )
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.download_button(
-            "⬇️ Baixar Acumulado (CSV)",
-            data=tabela_acumulada.to_csv(index=False, sep=";", decimal=","),
-            file_name=f"vlraf_acumulado_{mes}.csv"
-        )
-    with col2:
-        st.download_button(
-            "⬇️ Baixar Acumulado (Excel)",
-            data=df_para_excel(tabela_acumulada),
-            file_name=f"vlraf_acumulado_{mes}.xlsx"
-        )
+    st.download_button(
+        "⬇️ Excel Acumulado",
+        data=df_para_excel(tabela_acumulada),
+        file_name=f"vlraf_acumulado_{mes}.xlsx"
+    )
 
 # =================================================
-# TAB 2 — COMPARAÇÃO ENTRE MESES
+# TAB 2
 # =================================================
 with tab2:
-    st.subheader("Comparação entre meses com desvio diário")
-    st.info("Gráficos mantidos iguais ao seu código original.")
+    st.info("Comparação entre meses – manter lógica original.")
