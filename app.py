@@ -73,6 +73,39 @@ def aplicar_estilo_plotly(fig):
         zeroline=False
     )
     return fig
+  
+    def formatar_moeda(valor):
+        if pd.isna(valor):
+            return ""
+        return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    
+    def dia_util_para_data(df_base, mes):
+        mapa = (
+            df_base[df_base["MES"] == mes]
+            .drop_duplicates("DIA_UTIL")
+            .set_index("DIA_UTIL")["DATA_EFETIVACAO"]
+            .dt.strftime("%d/%m/%Y")
+        )
+        return mapa
+
+    def cor_desvio(val):
+        v = float(
+            val.replace("R$", "")
+            .replace(".", "")
+            .replace(",", ".")
+        )
+        if v < 0:
+            return "color: red; font-weight: bold"
+        return "color: #1f77b4; font-weight: bold"
+    
+    st.dataframe(
+        tabela.style.applymap(
+            cor_desvio,
+            subset=["Δ VLRAF (R$)"]
+        ),
+        use_container_width=True
+    )
+
 
 # =================================================
 # MAPAS DE CORES
@@ -158,21 +191,27 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
     # TABELAS + DOWNLOAD
+
+    mapa_datas = dia_util_para_data(df, mes)
+    
     tabela_diaria = g.reset_index()
-    tabela_diaria["DIA_UTIL"] = tabela_diaria["DIA_UTIL"].apply(lambda x: f"D+{x}")
-
+    tabela_diaria["Dia Útil"] = tabela_diaria["DIA_UTIL"].map(mapa_datas)
+    
+    for col in tabela_diaria.columns:
+        if col not in ["DIA_UTIL", "Dia Útil"]:
+            tabela_diaria[col] = tabela_diaria[col].apply(formatar_moeda)
+    
+    tabela_diaria = tabela_diaria.drop(columns="DIA_UTIL")
+    
     tabela_acumulada = g_acum.reset_index()
-    tabela_acumulada["DIA_UTIL"] = tabela_acumulada["DIA_UTIL"].apply(lambda x: f"D+{x}")
+    tabela_acumulada["Dia Útil"] = tabela_acumulada["DIA_UTIL"].map(mapa_datas)
+    
+    for col in tabela_acumulada.columns:
+        if col not in ["DIA_UTIL", "Dia Útil"]:
+            tabela_acumulada[col] = tabela_acumulada[col].apply(formatar_moeda)
+    
+    tabela_acumulada = tabela_acumulada.drop(columns="DIA_UTIL")
 
-    st.markdown("### 📋 VLRAF Diário")
-    st.dataframe(tabela_diaria, use_container_width=True)
-    st.download_button("⬇️ Baixar CSV", tabela_diaria.to_csv(index=False, sep=";", decimal=","),
-                       file_name=f"vlraf_diario_{mes}.csv")
-
-    st.markdown("### 📋 VLRAF Acumulado")
-    st.dataframe(tabela_acumulada, use_container_width=True)
-    st.download_button("⬇️ Baixar CSV", tabela_acumulada.to_csv(index=False, sep=";", decimal=","),
-                       file_name=f"vlraf_acumulado_{mes}.csv")
 
 # =================================================
 # TAB 2 — COMPARAÇÃO ENTRE MESES
@@ -215,12 +254,23 @@ with tab2:
         st.plotly_chart(fig, use_container_width=True)
 
         # TABELA + DOWNLOAD
-        tabela = g.reset_index()
-        tabela["DIA_UTIL"] = tabela["DIA_UTIL"].apply(lambda x: f"D+{x}")
 
-        st.dataframe(tabela, use_container_width=True)
-        st.download_button(
-            f"⬇️ Baixar CSV ({prod})",
-            tabela.to_csv(index=False, sep=";", decimal=","),
-            file_name=f"comparacao_{prod}_{mes_a}_vs_{mes_b}.csv"
+        tabela = g.reset_index()
+        tabela["Dia Útil"] = tabela["DIA_UTIL"].apply(
+            lambda x: sub[sub["DIA_UTIL"] == x]["DATA_EFETIVACAO"].iloc[0].strftime("%d/%m/%Y")
         )
+        
+        tabela["Δ VLRAF"] = tabela[mes_b] - tabela[mes_a]
+        
+        tabela = tabela.rename(columns={
+            mes_a: f"VLRAF {mes_a}",
+            mes_b: f"VLRAF {mes_b}"
+        })
+        
+        for col in [f"VLRAF {mes_a}", f"VLRAF {mes_b}"]:
+            tabela[col] = tabela[col].apply(formatar_moeda)
+        
+        tabela["Δ VLRAF (R$)"] = tabela["Δ VLRAF"].apply(formatar_moeda)
+        
+        tabela = tabela[["Dia Útil", f"VLRAF {mes_a}", f"VLRAF {mes_b}", "Δ VLRAF (R$)"]]
+
