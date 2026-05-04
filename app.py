@@ -78,71 +78,28 @@ def aplicar_estilo_plotly(fig):
 def formatar_tabela(df):
     df_fmt = df.copy()
 
-    # índice como D+
     df_fmt.index = [f"D+{i}" for i in df_fmt.index]
-    df_fmt.index.name = "DATA"
+    df_fmt.index.name = "DIA_UTIL"
 
-    # formatação moeda
     for col in df_fmt.columns:
-        df_fmt[col] = df_fmt[col].apply(
-            lambda x: f"R$ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
+        if "DATA" not in str(col):
+            df_fmt[col] = df_fmt[col].apply(
+                lambda x: f"R$ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            )
 
     return df_fmt
 
 # =================================================
-# EXCEL FORMATADO
+# EXCEL
 # =================================================
 def gerar_excel(dfs_dict):
     output = BytesIO()
-
-    try:
-        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-            for nome, df in dfs_dict.items():
-                df.to_excel(writer, sheet_name=nome)
-
-                workbook  = writer.book
-                worksheet = writer.sheets[nome]
-
-                fmt_pos = workbook.add_format({'font_color': 'blue', 'num_format': 'R$ #,##0'})
-                fmt_neg = workbook.add_format({'font_color': 'red', 'num_format': 'R$ #,##0'})
-
-                for col_idx in range(1, len(df.columns)+1):
-                    worksheet.set_column(col_idx, col_idx, 18)
-
-                    worksheet.conditional_format(1, col_idx, len(df), col_idx, {
-                        'type': 'cell',
-                        'criteria': '>=',
-                        'value': 0,
-                        'format': fmt_pos
-                    })
-
-                    worksheet.conditional_format(1, col_idx, len(df), col_idx, {
-                        'type': 'cell',
-                        'criteria': '<',
-                        'value': 0,
-                        'format': fmt_neg
-                    })
-
-    except ModuleNotFoundError:
-        # fallback simples (sem formatação)
-        with pd.ExcelWriter(output) as writer:
-            for nome, df in dfs_dict.items():
-                df.to_excel(writer, sheet_name=nome)
-
+    with pd.ExcelWriter(output) as writer:
+        for nome, df in dfs_dict.items():
+            df.to_excel(writer, sheet_name=nome)
     return output.getvalue()
 
 # =================================================
-# MAPAS DE CORES
-# =================================================
-MAPA_CORES_PAGAMENTO = {"24": "#1f77b4", "corte": "#EA9411"}
-MAPA_CORES_PRODUTO = {
-    "NOVO": "#1f77b4",
-    "REFIN": "#EA9411",
-    "PORTABILIDADE": "#6f42c1",
-    "REFIN DA PORT": "#2ca02c"
-}
-
 df = adicionar_dia_util(df)
 
 # =================================================
@@ -190,60 +147,37 @@ with tab1:
     g = base.groupby(["DIA_UTIL", classificacao])["VLRAF"].sum().unstack(fill_value=0)
     g_acum = g.cumsum()
 
+    # MAPA DATA
+    mapa_data = (
+        base.groupby("DIA_UTIL")["DATA_EFETIVACAO"]
+        .min()
+    )
+
+    g["DATA"] = g.index.map(mapa_data)
+    g_acum["DATA"] = g_acum.index.map(mapa_data)
+
     if classificacao == "COMISSAO_DIFERIDA":
         ordem = [c for c in ["24", "corte"] if c in g.columns]
-        g = g[ordem]
-        g_acum = g_acum[ordem]
+        g = g[ordem + ["DATA"]]
+        g_acum = g_acum[ordem + ["DATA"]]
 
-    mapa_cores = MAPA_CORES_PAGAMENTO if classificacao == "COMISSAO_DIFERIDA" else MAPA_CORES_PRODUTO
     eixo_x = [f"D+{d}" for d in g.index]
 
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.08)
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
 
     for col in g.columns:
-        fig.add_bar(row=1, col=1, x=eixo_x, y=g[col], name=str(col),
-                    marker_color=mapa_cores.get(col, "gray"))
+        if col != "DATA":
+            fig.add_bar(row=1, col=1, x=eixo_x, y=g[col], name=str(col))
 
     for col in g_acum.columns:
-        fig.add_bar(row=2, col=1, x=eixo_x, y=g_acum[col],
-                    showlegend=False,
-                    marker_color=mapa_cores.get(col, "gray"))
+        if col != "DATA":
+            fig.add_bar(row=2, col=1, x=eixo_x, y=g_acum[col], showlegend=False)
 
     fig = aplicar_estilo_plotly(fig)
     st.plotly_chart(fig, use_container_width=True)
 
-    # TABELAS
-    # ===============================
-    # TABELA UNIFICADA
-    # ===============================
-    tabela_unificada = pd.concat(
-        {
-            "Diário": g,
-            "Acumulado": g_acum
-        },
-        axis=1
-    )
-    
+    tabela_unificada = pd.concat({"Diário": g, "Acumulado": g_acum}, axis=1)
     st.dataframe(formatar_tabela(tabela_unificada))
-    
-    # Excel
-    excel = gerar_excel({
-        "Resumo": tabela_unificada
-    })
-    
-    st.download_button(
-        "📥 Baixar Excel",
-        data=excel,
-        file_name=f"vlraf_{mes}.xlsx",
-        key=f"download_tab1_{mes}"
-    )
-
-    excel = gerar_excel({
-        "Diario": g,
-        "Acumulado": g_acum
-    })
-
-    st.download_button("📥 Baixar Excel", data=excel, file_name=f"vlraf_{mes}.xlsx")
 
 # =================================================
 # TAB 2
@@ -264,111 +198,55 @@ with tab2:
 
         sub = base[base["GRUPO PRODUTO"] == prod]
 
-        # ===============================
-        # BASE DIÁRIA
-        # ===============================
         g = (
             sub.groupby(["MES", "DIA_UTIL"])["VLRAF"]
             .sum()
             .unstack("MES", fill_value=0)
         )
 
+        # MAPA DATA POR MES
+        mapa_data = (
+            sub.groupby(["MES", "DIA_UTIL"])["DATA_EFETIVACAO"]
+            .min()
+            .unstack("MES")
+        )
+
+        # transformar em DATA + VALOR
+        for mes in [mes_a, mes_b]:
+            g[(mes, "VALOR")] = g[mes]
+            g[(mes, "DATA")] = mapa_data[mes]
+            g.drop(columns=mes, inplace=True)
+
+        g_acum = g.copy()
+        for mes in [mes_a, mes_b]:
+            g_acum[(mes, "VALOR")] = g[(mes, "VALOR")].cumsum()
+
+        g_desvio = g.copy()
+        g_desvio["DESVIO"] = g[(mes_b, "VALOR")] - g[(mes_a, "VALOR")]
+
+        g_desvio_acum = g_desvio.copy()
+        g_desvio_acum["DESVIO_ACUM"] = g_desvio["DESVIO"].cumsum()
+
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
+
         eixo_x = [f"D+{d}" for d in g.index]
 
-        # ===============================
-        # ACUMULADO
-        # ===============================
-        g_acum = g.cumsum()
+        fig.add_bar(row=1, col=1, x=eixo_x, y=g[(mes_a, "VALOR")], name=mes_a)
+        fig.add_bar(row=1, col=1, x=eixo_x, y=g[(mes_b, "VALOR")], name=mes_b)
 
-        # ===============================
-        # DESVIO DIÁRIO
-        # ===============================
-        g_desvio = g.loc[(g[mes_a] != 0) & (g[mes_b] != 0)].copy()
-        g_desvio["DESVIO"] = g_desvio[mes_b] - g_desvio[mes_a]
-
-        # ===============================
-        # DESVIO ACUMULADO
-        # ===============================
-        g_desvio_acum = g_desvio.copy()
-        if not g_desvio_acum.empty:
-            g_desvio_acum["DESVIO_ACUM"] = g_desvio_acum["DESVIO"].cumsum()
-
-        # ===============================
-        # GRÁFICO
-        # ===============================
-        fig = make_subplots(
-            rows=2, cols=1,
-            shared_xaxes=True,
-            vertical_spacing=0.08,
-            row_heights=[0.7, 0.3]
-        )
-
-        cores = {mes_a: "gray", mes_b: "#EA9411"}
-
-        for mes in [mes_a, mes_b]:
-            fig.add_bar(
-                row=1, col=1,
-                x=eixo_x,
-                y=g[mes],
-                name=mes,
-                marker_color=cores[mes],
-                hovertemplate=f"<b>%{{x}}</b><br>{mes}: R$ %{{y:,.0f}}<extra></extra>"
-            )
-
-        fig.add_bar(
-            row=2, col=1,
-            x=[f"D+{d}" for d in g_desvio.index],
-            y=g_desvio["DESVIO"],
-            marker_color=["#EA9411" if v >= 0 else "gray" for v in g_desvio["DESVIO"]],
-            showlegend=False,
-            hovertemplate="<b>%{x}</b><br>Desvio: R$ %{y:,.0f}<extra></extra>"
-        )
-
-        fig.add_hline(y=0, row=2, col=1)
-
-        fig.update_yaxes(title_text="VLRAF", row=1, col=1)
-        fig.update_yaxes(title_text="Δ VLRAF", row=2, col=1)
-        fig.update_xaxes(title_text="Dia Útil", row=2, col=1)
+        fig.add_bar(row=2, col=1, x=eixo_x, y=g_desvio["DESVIO"])
 
         fig = aplicar_estilo_plotly(fig)
-        fig.update_layout(height=550)
-
         st.plotly_chart(fig, use_container_width=True)
 
-        # ===============================
-        # TABELA UNIFICADA
-        # ===============================
-        if not g_desvio.empty:
-            tabela_unificada = pd.concat(
-                {
-                    "Diário": g,
-                    "Acumulado": g_acum,
-                    "Desvio": g_desvio[["DESVIO"]],
-                    "Desvio Acumulado": g_desvio_acum[["DESVIO_ACUM"]]
-                },
-                axis=1
-            )
-        else:
-            tabela_unificada = pd.concat(
-                {
-                    "Diário": g,
-                    "Acumulado": g_acum
-                },
-                axis=1
-            )
+        tabela_unificada = pd.concat(
+            {
+                "Diário": g,
+                "Acumulado": g_acum,
+                "Desvio": g_desvio[["DESVIO"]],
+                "Desvio Acumulado": g_desvio_acum[["DESVIO_ACUM"]]
+            },
+            axis=1
+        )
 
         st.dataframe(formatar_tabela(tabela_unificada))
-
-        # ===============================
-        # EXCEL
-        # ===============================
-        excel = gerar_excel({
-            "Resumo": tabela_unificada
-        })
-
-        st.download_button(
-            f"📥 Baixar Excel - {prod}",
-            data=excel,
-            file_name=f"{prod}_{mes_a}_{mes_b}.xlsx",
-            key=f"download_{prod}_{mes_a}_{mes_b}"
-        )
