@@ -13,17 +13,17 @@ st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
 # FERIADOS NACIONAIS
 # =================================================
 FERIADOS_BR = pd.to_datetime([
-    "2024-01-01","2025-01-01","2026-01-01",
-    "2024-02-12","2024-02-13","2025-03-03","2025-03-04","2026-02-16","2026-02-17",
-    "2024-03-29","2025-04-18","2026-04-03",
-    "2024-04-21","2025-04-21","2026-04-21",
-    "2024-05-01","2025-05-01","2026-05-01",
-    "2024-06-20","2025-06-19","2026-06-04",
-    "2024-09-07","2025-09-07","2026-09-07",
-    "2024-10-12","2025-10-12","2026-10-12",
-    "2024-11-02","2025-11-02","2026-11-02",
-    "2024-11-15","2025-11-15","2026-11-15",
-    "2024-12-25","2025-12-25","2026-12-25",
+    "2026-01-01",
+    "2026-02-16","2026-02-17",
+    "2026-04-03",
+    "2026-04-21",
+    "2026-05-01",
+    "2026-06-04",
+    "2026-09-07",
+    "2026-10-12",
+    "2026-11-02",
+    "2026-11-15",
+    "2026-12-25",
 ])
 
 # =================================================
@@ -239,5 +239,144 @@ with tab1:
 # =================================================
 # TAB 2
 # =================================================
+# =================================================
+# TAB 2 — COMPARAÇÃO ENTRE MESES
+# =================================================
 with tab2:
-    st.info("Comparação entre meses – manter lógica original.")
+    st.subheader("Comparação entre Meses (Dia Útil)")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        mes_base = st.selectbox(
+            "Mês Base",
+            sorted(df["MES"].unique()),
+            index=0
+        )
+
+    with col2:
+        mes_comp = st.selectbox(
+            "Mês de Comparação",
+            [m for m in sorted(df["MES"].unique()) if m != mes_base],
+            index=0
+        )
+
+    grupo_produto_cmp = st.selectbox(
+        "Grupo Produto",
+        ["Todos"] + sorted(df["GRUPO PRODUTO"].unique()),
+        key="grupo_cmp"
+    )
+
+    def preparar_base(mes):
+        base = df[df["MES"] == mes]
+        if grupo_produto_cmp != "Todos":
+            base = base[base["GRUPO PRODUTO"] == grupo_produto_cmp]
+
+        g = (
+            base.groupby("DIA_UTIL")["VLRAF"]
+            .sum()
+            .sort_index()
+        )
+
+        return g, g.cumsum()
+
+    diario_base, acum_base = preparar_base(mes_base)
+    diario_comp, acum_comp = preparar_base(mes_comp)
+
+    # Alinhar pelo menor dia útil disponível
+    max_dia = min(
+        diario_base.index.max(),
+        diario_comp.index.max()
+    )
+
+    diario_base = diario_base.loc[:max_dia]
+    diario_comp = diario_comp.loc[:max_dia]
+
+    acum_base = acum_base.loc[:max_dia]
+    acum_comp = acum_comp.loc[:max_dia]
+
+    desvio_pct = ((diario_comp - diario_base) / diario_base.replace(0, pd.NA)) * 100
+
+    eixo_x = [f"D+{d}" for d in diario_base.index]
+
+    fig = make_subplots(
+        rows=3,
+        cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.07,
+        subplot_titles=(
+            "VLRAF Diário",
+            "VLRAF Acumulado",
+            "Desvio Diário (%)"
+        )
+    )
+
+    # Diário
+    fig.add_bar(
+        row=1, col=1,
+        x=eixo_x,
+        y=diario_base,
+        name=mes_base,
+        marker_color="#1f77b4"
+    )
+    fig.add_bar(
+        row=1, col=1,
+        x=eixo_x,
+        y=diario_comp,
+        name=mes_comp,
+        marker_color="#EA9411"
+    )
+
+    # Acumulado
+    fig.add_scatter(
+        row=2, col=1,
+        x=eixo_x,
+        y=acum_base,
+        mode="lines+markers",
+        name=f"Acum {mes_base}",
+        line=dict(color="#1f77b4")
+    )
+    fig.add_scatter(
+        row=2, col=1,
+        x=eixo_x,
+        y=acum_comp,
+        mode="lines+markers",
+        name=f"Acum {mes_comp}",
+        line=dict(color="#EA9411")
+    )
+
+    # Desvio %
+    fig.add_bar(
+        row=3, col=1,
+        x=eixo_x,
+        y=desvio_pct,
+        name="Desvio %",
+        marker_color="#6c757d"
+    )
+
+    fig.update_yaxes(title_text="VLRAF", row=1, col=1)
+    fig.update_yaxes(title_text="VLRAF Acumulado", row=2, col=1)
+    fig.update_yaxes(title_text="%", row=3, col=1)
+    fig.update_xaxes(title_text="Dia Útil", row=3, col=1)
+
+    fig = aplicar_estilo_plotly(fig)
+    st.plotly_chart(fig, use_container_width=True)
+
+    # =============================
+    # TABELA COMPARATIVA
+    # =============================
+    tabela_cmp = pd.DataFrame({
+        "Dia Útil": eixo_x,
+        f"VLRAF {mes_base}": diario_base.values,
+        f"VLRAF {mes_comp}": diario_comp.values,
+        "Desvio %": desvio_pct.values
+    })
+
+    st.markdown("### 📋 Tabela Comparativa")
+    st.dataframe(tabela_cmp, use_container_width=True)
+
+    st.download_button(
+        "⬇️ Baixar Comparação (CSV)",
+        data=tabela_cmp.to_csv(index=False, sep=";", decimal=","),
+        file_name=f"comparacao_{mes_base}_vs_{mes_comp}.csv"
+    )
