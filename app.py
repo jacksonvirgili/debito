@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from io import BytesIO
 
 # =================================================
 # CONFIGURAÇÃO
@@ -12,17 +13,17 @@ st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
 # FERIADOS NACIONAIS
 # =================================================
 FERIADOS_BR = pd.to_datetime([
-    "2024-01-01","2025-01-01","2026-01-01",
-    "2024-02-12","2024-02-13","2025-03-03","2025-03-04","2026-02-16","2026-02-17",
-    "2024-03-29","2025-04-18","2026-04-03",
-    "2024-04-21","2025-04-21","2026-04-21",
-    "2024-05-01","2025-05-01","2026-05-01",
-    "2024-06-20","2025-06-19","2026-06-04",
-    "2024-09-07","2025-09-07","2026-09-07",
-    "2024-10-12","2025-10-12","2026-10-12",
-    "2024-11-02","2025-11-02","2026-11-02",
-    "2024-11-15","2025-11-15","2026-11-15",
-    "2024-12-25","2025-12-25","2026-12-25",
+    "2026-01-01",
+    "2026-02-16","2026-02-17",
+    "2026-04-03",
+    "2026-04-21",
+    "2026-05-01",
+    "2026-06-04",
+    "2026-09-07",
+    "2026-10-12",
+    "2026-11-02",
+    "2026-11-15",
+    "2026-12-25",
 ])
 
 # =================================================
@@ -74,31 +75,50 @@ def aplicar_estilo_plotly(fig):
     )
     return fig
 
-# =================================================
-# FORMATAÇÃO TABELAS
-# =================================================
 def formatar_tabela(df):
     df_fmt = df.copy()
     df_fmt.index = [f"D+{i}" for i in df_fmt.index]
     df_fmt.index.name = "DATA"
-
-    for col in df_fmt.columns:
-        df_fmt[col] = df_fmt[col].apply(
-            lambda x: f"R$ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        )
     return df_fmt
 
-def aplicar_cor(val):
-    try:
-        v = float(str(val).replace("R$", "").replace(".", "").replace(",", "."))
-        return "color: red" if v < 0 else "color: blue"
-    except:
-        return ""
+# =================================================
+# EXCEL FORMATADO
+# =================================================
+def gerar_excel(dfs_dict):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        for nome, df in dfs_dict.items():
+            df.to_excel(writer, sheet_name=nome)
+
+            workbook  = writer.book
+            worksheet = writer.sheets[nome]
+
+            fmt_pos = workbook.add_format({'font_color': 'blue', 'num_format': 'R$ #,##0'})
+            fmt_neg = workbook.add_format({'font_color': 'red', 'num_format': 'R$ #,##0'})
+
+            for col_idx in range(1, len(df.columns)+1):
+                worksheet.set_column(col_idx, col_idx, 18)
+
+                worksheet.conditional_format(1, col_idx, len(df), col_idx, {
+                    'type': 'cell',
+                    'criteria': '>=',
+                    'value': 0,
+                    'format': fmt_pos
+                })
+
+                worksheet.conditional_format(1, col_idx, len(df), col_idx, {
+                    'type': 'cell',
+                    'criteria': '<',
+                    'value': 0,
+                    'format': fmt_neg
+                })
+
+    return output.getvalue()
 
 # =================================================
 # MAPAS DE CORES
 # =================================================
-MAPA_CORES_PAGAMENTO = {"24": "#1f77b4","corte": "#EA9411"}
+MAPA_CORES_PAGAMENTO = {"24": "#1f77b4", "corte": "#EA9411"}
 MAPA_CORES_PRODUTO = {
     "NOVO": "#1f77b4",
     "REFIN": "#EA9411",
@@ -176,21 +196,26 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
     # TABELAS
-    st.dataframe(formatar_tabela(g).style.applymap(aplicar_cor))
-    st.download_button("📥 Download Diário", g.to_csv().encode("utf-8"), f"diario_{mes}.csv")
+    st.dataframe(formatar_tabela(g))
+    st.dataframe(formatar_tabela(g_acum))
 
-    st.dataframe(formatar_tabela(g_acum).style.applymap(aplicar_cor))
-    st.download_button("📥 Download Acumulado", g_acum.to_csv().encode("utf-8"), f"acumulado_{mes}.csv")
+    excel = gerar_excel({
+        "Diario": g,
+        "Acumulado": g_acum
+    })
+
+    st.download_button("📥 Baixar Excel", data=excel, file_name=f"vlraf_{mes}.xlsx")
 
 # =================================================
 # TAB 2
 # =================================================
 with tab2:
-    st.subheader("Comparação entre meses")
+    st.subheader("Comparação entre meses com desvio diário")
 
     meses = sorted(df["MES"].unique())
-    mes_a = st.selectbox("Mês A", meses)
-    mes_b = st.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
+    col1, col2 = st.columns(2)
+    mes_a = col1.selectbox("Mês A", meses)
+    mes_b = col2.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
 
     base = df[df["MES"].isin([mes_a, mes_b])]
     produtos = sorted(base["GRUPO PRODUTO"].unique())
@@ -202,6 +227,7 @@ with tab2:
         g = sub.groupby(["MES", "DIA_UTIL"])["VLRAF"].sum().unstack("MES", fill_value=0)
 
         eixo_x = [f"D+{d}" for d in g.index]
+
         fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
 
         for mes in [mes_a, mes_b]:
@@ -218,9 +244,18 @@ with tab2:
         st.plotly_chart(fig, use_container_width=True)
 
         # TABELAS
-        st.dataframe(formatar_tabela(g).style.applymap(aplicar_cor))
-        st.download_button(f"📥 Download {prod}", g.to_csv().encode("utf-8"))
+        st.dataframe(formatar_tabela(g))
 
         if not g_desvio.empty:
-            st.dataframe(formatar_tabela(g_desvio[["DESVIO"]]).style.applymap(aplicar_cor))
-            st.download_button(f"📥 Download Desvio {prod}", g_desvio.to_csv().encode("utf-8"))
+            st.dataframe(formatar_tabela(g_desvio[["DESVIO"]]))
+
+        excel = gerar_excel({
+            "Comparacao": g,
+            "Desvio": g_desvio if not g_desvio.empty else pd.DataFrame()
+        })
+
+        st.download_button(
+            f"📥 Baixar Excel - {prod}",
+            data=excel,
+            file_name=f"{prod}_{mes_a}_{mes_b}.xlsx"
+        )
