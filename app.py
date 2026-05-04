@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from io import BytesIO
 
 # =================================================
 # CONFIGURAÇÃO
@@ -13,17 +12,17 @@ st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
 # FERIADOS NACIONAIS
 # =================================================
 FERIADOS_BR = pd.to_datetime([
-    "2026-01-01",
-    "2026-02-16","2026-02-17",
-    "2026-04-03",
-    "2026-04-21",
-    "2026-05-01",
-    "2026-06-04",
-    "2026-09-07",
-    "2026-10-12",
-    "2026-11-02",
-    "2026-11-15",
-    "2026-12-25",
+    "2024-01-01","2025-01-01","2026-01-01",
+    "2024-02-12","2024-02-13","2025-03-03","2025-03-04","2026-02-16","2026-02-17",
+    "2024-03-29","2025-04-18","2026-04-03",
+    "2024-04-21","2025-04-21","2026-04-21",
+    "2024-05-01","2025-05-01","2026-05-01",
+    "2024-06-20","2025-06-19","2026-06-04",
+    "2024-09-07","2025-09-07","2026-09-07",
+    "2024-10-12","2025-10-12","2026-10-12",
+    "2024-11-02","2025-11-02","2026-11-02",
+    "2024-11-15","2025-11-15","2026-11-15",
+    "2024-12-25","2025-12-25","2026-12-25",
 ])
 
 # =================================================
@@ -43,7 +42,7 @@ df = carregar_dados()
 # =================================================
 def adicionar_dia_util(df):
     df = df.copy()
-    df = df[df["DATA_EFETIVACAO"].dt.weekday < 5]   # ✅ corrigido
+    df = df[df["DATA_EFETIVACAO"].dt.weekday < 5]
     df = df[~df["DATA_EFETIVACAO"].isin(FERIADOS_BR)]
     df["MES"] = df["DATA_EFETIVACAO"].dt.strftime("%Y-%m")
     df["DIA_UTIL"] = (
@@ -75,12 +74,6 @@ def aplicar_estilo_plotly(fig):
     )
     return fig
 
-def df_para_excel(df):
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:  # ✅ corrigido
-        df.to_excel(writer, index=False, sheet_name="Dados")
-    return buffer.getvalue()
-
 # =================================================
 # MAPAS DE CORES
 # =================================================
@@ -103,20 +96,9 @@ df = adicionar_dia_util(df)
 # =================================================
 st.sidebar.title("Filtros")
 
-regional = st.sidebar.selectbox(
-    "Regional",
-    ["Todas"] + sorted(df["REGIONAIS"].dropna().unique())
-)
-
-coordenador = st.sidebar.selectbox(
-    "Coordenador",
-    ["Todos"] + sorted(df["COORDENADOR"].dropna().unique())
-)
-
-loja = st.sidebar.selectbox(
-    "Loja",
-    ["Todas"] + sorted(df["DESCRICAO_LOJA"].dropna().unique())
-)
+regional = st.sidebar.selectbox("Regional", ["Todas"] + sorted(df["REGIONAIS"].dropna().unique()))
+coordenador = st.sidebar.selectbox("Coordenador", ["Todos"] + sorted(df["COORDENADOR"].dropna().unique()))
+loja = st.sidebar.selectbox("Loja", ["Todas"] + sorted(df["DESCRICAO_LOJA"].dropna().unique()))
 
 if regional != "Todas":
     df = df[df["REGIONAIS"] == regional]
@@ -136,22 +118,13 @@ tab1, tab2 = st.tabs(["Análise Diária", "Comparação entre Meses"])
 with tab1:
     st.subheader("Análise diária por classificação")
 
-    grupo_produto = st.selectbox(
-        "Grupo Produto",
-        ["Todos"] + sorted(df["GRUPO PRODUTO"].unique())
-    )
+    grupo_produto = st.selectbox("Grupo Produto", ["Todos"] + sorted(df["GRUPO PRODUTO"].unique()))
 
-    classificacao_label = st.radio(
-        "Classificar por:",
-        ["TIPO PAGAMENTO", "TIPO PRODUTO"]
-    )
-
-    MAPA_CLASSIFICACAO = {
+    classificacao_label = st.radio("Classificar por:", ["TIPO PAGAMENTO", "TIPO PRODUTO"])
+    classificacao = {
         "TIPO PAGAMENTO": "COMISSAO_DIFERIDA",
         "TIPO PRODUTO": "TIPO PRODUTO"
-    }
-
-    classificacao = MAPA_CLASSIFICACAO[classificacao_label]
+    }[classificacao_label]
 
     mes = st.selectbox("Mês", sorted(df["MES"].unique()))
 
@@ -159,12 +132,7 @@ with tab1:
     if grupo_produto != "Todos":
         base = base[base["GRUPO PRODUTO"] == grupo_produto]
 
-    g = (
-        base.groupby(["DIA_UTIL", classificacao])["VLRAF"]
-        .sum()
-        .unstack(fill_value=0)
-    )
-
+    g = base.groupby(["DIA_UTIL", classificacao])["VLRAF"].sum().unstack(fill_value=0)
     g_acum = g.cumsum()
 
     if classificacao == "COMISSAO_DIFERIDA":
@@ -172,211 +140,87 @@ with tab1:
         g = g[ordem]
         g_acum = g_acum[ordem]
 
-    mapa_cores = (
-        MAPA_CORES_PAGAMENTO
-        if classificacao == "COMISSAO_DIFERIDA"
-        else MAPA_CORES_PRODUTO
-    )
-
+    mapa_cores = MAPA_CORES_PAGAMENTO if classificacao == "COMISSAO_DIFERIDA" else MAPA_CORES_PRODUTO
     eixo_x = [f"D+{d}" for d in g.index]
 
-    fig = make_subplots(
-        rows=2, cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.08,
-        subplot_titles=("VLRAF Diário", "VLRAF Acumulado")
-    )
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
+                        subplot_titles=("VLRAF Diário", "VLRAF Acumulado"))
 
     for col in g.columns:
-        fig.add_bar(
-            row=1, col=1,
-            x=eixo_x,
-            y=g[col],
-            name=str(col),
-            marker_color=mapa_cores.get(col, "gray")
-        )
+        fig.add_bar(row=1, col=1, x=eixo_x, y=g[col],
+                    name=col, marker_color=mapa_cores.get(col, "gray"))
 
     for col in g_acum.columns:
-        fig.add_bar(
-            row=2, col=1,
-            x=eixo_x,
-            y=g_acum[col],
-            showlegend=False,
-            marker_color=mapa_cores.get(col, "gray")
-        )
-
-    fig.update_yaxes(title_text="VLRAF", row=1, col=1)
-    fig.update_yaxes(title_text="VLRAF Acumulado", row=2, col=1)
-    fig.update_xaxes(title_text="Dia Útil", row=2, col=1)
+        fig.add_bar(row=2, col=1, x=eixo_x, y=g_acum[col],
+                    showlegend=False, marker_color=mapa_cores.get(col, "gray"))
 
     fig = aplicar_estilo_plotly(fig)
     st.plotly_chart(fig, use_container_width=True)
 
-    # =================================================
     # TABELAS + DOWNLOAD
-    # =================================================
-    tabela_diaria = g.reset_index().rename(columns={"DIA_UTIL": "Dia Útil"})
-    tabela_diaria["Dia Útil"] = tabela_diaria["Dia Útil"].apply(lambda x: f"D+{x}")
+    tabela_diaria = g.reset_index()
+    tabela_diaria["DIA_UTIL"] = tabela_diaria["DIA_UTIL"].apply(lambda x: f"D+{x}")
 
-    tabela_acumulada = g_acum.reset_index().rename(columns={"DIA_UTIL": "Dia Útil"})
-    tabela_acumulada["Dia Útil"] = tabela_acumulada["Dia Útil"].apply(lambda x: f"D+{x}")
+    tabela_acumulada = g_acum.reset_index()
+    tabela_acumulada["DIA_UTIL"] = tabela_acumulada["DIA_UTIL"].apply(lambda x: f"D+{x}")
 
+    st.markdown("### 📋 VLRAF Diário")
     st.dataframe(tabela_diaria, use_container_width=True)
+    st.download_button("⬇️ Baixar CSV", tabela_diaria.to_csv(index=False, sep=";", decimal=","),
+                       file_name=f"vlraf_diario_{mes}.csv")
+
+    st.markdown("### 📋 VLRAF Acumulado")
     st.dataframe(tabela_acumulada, use_container_width=True)
+    st.download_button("⬇️ Baixar CSV", tabela_acumulada.to_csv(index=False, sep=";", decimal=","),
+                       file_name=f"vlraf_acumulado_{mes}.csv")
 
-    st.download_button(
-        "⬇️ Excel Diário",
-        data=df_para_excel(tabela_diaria),
-        file_name=f"vlraf_diario_{mes}.xlsx"
-    )
-
-    st.download_button(
-        "⬇️ Excel Acumulado",
-        data=df_para_excel(tabela_acumulada),
-        file_name=f"vlraf_acumulado_{mes}.xlsx"
-    )
-
-# =================================================
-# TAB 2
-# =================================================
 # =================================================
 # TAB 2 — COMPARAÇÃO ENTRE MESES
 # =================================================
 with tab2:
-    st.subheader("Comparação entre Meses (Dia Útil)")
+    st.subheader("Comparação entre meses com desvio diário")
 
-    col1, col2 = st.columns(2)
+    meses = sorted(df["MES"].unique())
+    mes_a = st.selectbox("Mês A", meses)
+    mes_b = st.selectbox("Mês B", meses, index=1 if len(meses) > 1 else 0)
 
-    with col1:
-        mes_base = st.selectbox(
-            "Mês Base",
-            sorted(df["MES"].unique()),
-            index=0
+    base = df[df["MES"].isin([mes_a, mes_b])]
+
+    for prod in sorted(base["GRUPO PRODUTO"].unique()):
+        st.markdown(f"### {prod}")
+
+        sub = base[base["GRUPO PRODUTO"] == prod]
+        g = sub.groupby(["MES", "DIA_UTIL"])["VLRAF"].sum().unstack("MES", fill_value=0)
+
+        eixo_x = [f"D+{d}" for d in g.index]
+
+        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
+
+        cores = {mes_a: "gray", mes_b: "#EA9411"}
+
+        for m in [mes_a, mes_b]:
+            fig.add_bar(row=1, col=1, x=eixo_x, y=g[m],
+                        name=m, marker_color=cores[m])
+
+        g["Desvio"] = g[mes_b] - g[mes_a]
+
+        fig.add_bar(row=2, col=1, x=eixo_x, y=g["Desvio"],
+                    marker_color=["#EA9411" if v >= 0 else "gray" for v in g["Desvio"]],
+                    showlegend=False)
+
+        fig.add_hline(y=0, row=2, col=1)
+        fig = aplicar_estilo_plotly(fig)
+        fig.update_layout(height=550)
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # TABELA + DOWNLOAD
+        tabela = g.reset_index()
+        tabela["DIA_UTIL"] = tabela["DIA_UTIL"].apply(lambda x: f"D+{x}")
+
+        st.dataframe(tabela, use_container_width=True)
+        st.download_button(
+            f"⬇️ Baixar CSV ({prod})",
+            tabela.to_csv(index=False, sep=";", decimal=","),
+            file_name=f"comparacao_{prod}_{mes_a}_vs_{mes_b}.csv"
         )
-
-    with col2:
-        mes_comp = st.selectbox(
-            "Mês de Comparação",
-            [m for m in sorted(df["MES"].unique()) if m != mes_base],
-            index=0
-        )
-
-    grupo_produto_cmp = st.selectbox(
-        "Grupo Produto",
-        ["Todos"] + sorted(df["GRUPO PRODUTO"].unique()),
-        key="grupo_cmp"
-    )
-
-    def preparar_base(mes):
-        base = df[df["MES"] == mes]
-        if grupo_produto_cmp != "Todos":
-            base = base[base["GRUPO PRODUTO"] == grupo_produto_cmp]
-
-        g = (
-            base.groupby("DIA_UTIL")["VLRAF"]
-            .sum()
-            .sort_index()
-        )
-
-        return g, g.cumsum()
-
-    diario_base, acum_base = preparar_base(mes_base)
-    diario_comp, acum_comp = preparar_base(mes_comp)
-
-    # Alinhar pelo menor dia útil disponível
-    max_dia = min(
-        diario_base.index.max(),
-        diario_comp.index.max()
-    )
-
-    diario_base = diario_base.loc[:max_dia]
-    diario_comp = diario_comp.loc[:max_dia]
-
-    acum_base = acum_base.loc[:max_dia]
-    acum_comp = acum_comp.loc[:max_dia]
-
-    desvio_pct = ((diario_comp - diario_base) / diario_base.replace(0, pd.NA)) * 100
-
-    eixo_x = [f"D+{d}" for d in diario_base.index]
-
-    fig = make_subplots(
-        rows=3,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.07,
-        subplot_titles=(
-            "VLRAF Diário",
-            "VLRAF Acumulado",
-            "Desvio Diário (%)"
-        )
-    )
-
-    # Diário
-    fig.add_bar(
-        row=1, col=1,
-        x=eixo_x,
-        y=diario_base,
-        name=mes_base,
-        marker_color="#1f77b4"
-    )
-    fig.add_bar(
-        row=1, col=1,
-        x=eixo_x,
-        y=diario_comp,
-        name=mes_comp,
-        marker_color="#EA9411"
-    )
-
-    # Acumulado
-    fig.add_scatter(
-        row=2, col=1,
-        x=eixo_x,
-        y=acum_base,
-        mode="lines+markers",
-        name=f"Acum {mes_base}",
-        line=dict(color="#1f77b4")
-    )
-    fig.add_scatter(
-        row=2, col=1,
-        x=eixo_x,
-        y=acum_comp,
-        mode="lines+markers",
-        name=f"Acum {mes_comp}",
-        line=dict(color="#EA9411")
-    )
-
-    # Desvio %
-    fig.add_bar(
-        row=3, col=1,
-        x=eixo_x,
-        y=desvio_pct,
-        name="Desvio %",
-        marker_color="#6c757d"
-    )
-
-    fig.update_yaxes(title_text="VLRAF", row=1, col=1)
-    fig.update_yaxes(title_text="VLRAF Acumulado", row=2, col=1)
-    fig.update_yaxes(title_text="%", row=3, col=1)
-    fig.update_xaxes(title_text="Dia Útil", row=3, col=1)
-
-    fig = aplicar_estilo_plotly(fig)
-    st.plotly_chart(fig, use_container_width=True)
-
-    # =============================
-    # TABELA COMPARATIVA
-    # =============================
-    tabela_cmp = pd.DataFrame({
-        "Dia Útil": eixo_x,
-        f"VLRAF {mes_base}": diario_base.values,
-        f"VLRAF {mes_comp}": diario_comp.values,
-        "Desvio %": desvio_pct.values
-    })
-
-    st.markdown("### 📋 Tabela Comparativa")
-    st.dataframe(tabela_cmp, use_container_width=True)
-
-    st.download_button(
-        "⬇️ Baixar Comparação (CSV)",
-        data=tabela_cmp.to_csv(index=False, sep=";", decimal=","),
-        file_name=f"comparacao_{mes_base}_vs_{mes_comp}.csv"
-    )
