@@ -12,17 +12,17 @@ st.set_page_config(page_title="Acompanhamento VLRAF", layout="wide")
 # FERIADOS NACIONAIS
 # =================================================
 FERIADOS_BR = pd.to_datetime([
-    "2026-01-01",
-    "2026-02-16","2026-02-17",
-    "2026-04-03",
-    "2026-04-21",
-    "2026-05-01",
-    "2026-06-04",
-    "2026-09-07",
-    "2026-10-12",
-    "2026-11-02",
-    "2026-11-15",
-    "2026-12-25",
+    "2024-01-01","2025-01-01","2026-01-01",
+    "2024-02-12","2024-02-13","2025-03-03","2025-03-04","2026-02-16","2026-02-17",
+    "2024-03-29","2025-04-18","2026-04-03",
+    "2024-04-21","2025-04-21","2026-04-21",
+    "2024-05-01","2025-05-01","2026-05-01",
+    "2024-06-20","2025-06-19","2026-06-04",
+    "2024-09-07","2025-09-07","2026-09-07",
+    "2024-10-12","2025-10-12","2026-10-12",
+    "2024-11-02","2025-11-02","2026-11-02",
+    "2024-11-15","2025-11-15","2026-11-15",
+    "2024-12-25","2025-12-25","2026-12-25",
 ])
 
 # =================================================
@@ -73,48 +73,30 @@ def aplicar_estilo_plotly(fig):
         zeroline=False
     )
     return fig
-  
-    def formatar_moeda(valor):
-        if pd.isna(valor):
-            return ""
-        return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    
-    def dia_util_para_data(df_base, mes):
-        mapa = (
-            df_base[df_base["MES"] == mes]
-            .drop_duplicates("DIA_UTIL")
-            .set_index("DIA_UTIL")["DATA_EFETIVACAO"]
-            .dt.strftime("%d/%m/%Y")
-        )
-        return mapa
 
-    def cor_desvio(val):
-        v = float(
-            val.replace("R$", "")
-            .replace(".", "")
-            .replace(",", ".")
-        )
-        if v < 0:
-            return "color: red; font-weight: bold"
-        return "color: #1f77b4; font-weight: bold"
-    
-    st.dataframe(
-        tabela.style.applymap(
-            cor_desvio,
-            subset=["Δ VLRAF (R$)"]
-        ),
-        use_container_width=True
+def formatar_moeda(v):
+    if pd.isna(v):
+        return ""
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def mapa_dia_util_para_data(df, mes):
+    return (
+        df[df["MES"] == mes]
+        .drop_duplicates("DIA_UTIL")
+        .set_index("DIA_UTIL")["DATA_EFETIVACAO"]
+        .dt.strftime("%d/%m/%Y")
     )
 
+def cor_desvio(valor):
+    v = float(valor.replace("R$", "").replace(".", "").replace(",", "."))
+    if v < 0:
+        return "color: red; font-weight: bold"
+    return "color: #1f77b4; font-weight: bold"
 
 # =================================================
 # MAPAS DE CORES
 # =================================================
-MAPA_CORES_PAGAMENTO = {
-    "24": "#1f77b4",
-    "corte": "#EA9411"
-}
-
+MAPA_CORES_PAGAMENTO = {"24": "#1f77b4", "corte": "#EA9411"}
 MAPA_CORES_PRODUTO = {
     "NOVO": "#1f77b4",
     "REFIN": "#EA9411",
@@ -152,13 +134,8 @@ with tab1:
     st.subheader("Análise diária por classificação")
 
     grupo_produto = st.selectbox("Grupo Produto", ["Todos"] + sorted(df["GRUPO PRODUTO"].unique()))
-
     classificacao_label = st.radio("Classificar por:", ["TIPO PAGAMENTO", "TIPO PRODUTO"])
-    classificacao = {
-        "TIPO PAGAMENTO": "COMISSAO_DIFERIDA",
-        "TIPO PRODUTO": "TIPO PRODUTO"
-    }[classificacao_label]
-
+    classificacao = {"TIPO PAGAMENTO": "COMISSAO_DIFERIDA", "TIPO PRODUTO": "TIPO PRODUTO"}[classificacao_label]
     mes = st.selectbox("Mês", sorted(df["MES"].unique()))
 
     base = df[df["MES"] == mes]
@@ -168,53 +145,32 @@ with tab1:
     g = base.groupby(["DIA_UTIL", classificacao])["VLRAF"].sum().unstack(fill_value=0)
     g_acum = g.cumsum()
 
-    if classificacao == "COMISSAO_DIFERIDA":
-        ordem = [c for c in ["24", "corte"] if c in g.columns]
-        g = g[ordem]
-        g_acum = g_acum[ordem]
+    mapa_datas = mapa_dia_util_para_data(df, mes)
 
-    mapa_cores = MAPA_CORES_PAGAMENTO if classificacao == "COMISSAO_DIFERIDA" else MAPA_CORES_PRODUTO
-    eixo_x = [f"D+{d}" for d in g.index]
-
-    fig = make_subplots(rows=2, cols=1, shared_xaxes=True,
-                        subplot_titles=("VLRAF Diário", "VLRAF Acumulado"))
-
-    for col in g.columns:
-        fig.add_bar(row=1, col=1, x=eixo_x, y=g[col],
-                    name=col, marker_color=mapa_cores.get(col, "gray"))
-
-    for col in g_acum.columns:
-        fig.add_bar(row=2, col=1, x=eixo_x, y=g_acum[col],
-                    showlegend=False, marker_color=mapa_cores.get(col, "gray"))
-
-    fig = aplicar_estilo_plotly(fig)
-    st.plotly_chart(fig, use_container_width=True)
-
-    # TABELAS + DOWNLOAD
-
-    mapa_datas = dia_util_para_data(df, mes)
-    
     tabela_diaria = g.reset_index()
-    tabela_diaria["Dia Útil"] = tabela_diaria["DIA_UTIL"].map(mapa_datas)
-    
-    for col in tabela_diaria.columns:
-        if col not in ["DIA_UTIL", "Dia Útil"]:
-            tabela_diaria[col] = tabela_diaria[col].apply(formatar_moeda)
-    
+    tabela_diaria["Dia"] = tabela_diaria["DIA_UTIL"].map(mapa_datas)
+    for c in tabela_diaria.columns:
+        if c not in ["DIA_UTIL", "Dia"]:
+            tabela_diaria[c] = tabela_diaria[c].apply(formatar_moeda)
     tabela_diaria = tabela_diaria.drop(columns="DIA_UTIL")
-    
-    tabela_acumulada = g_acum.reset_index()
-    tabela_acumulada["Dia Útil"] = tabela_acumulada["DIA_UTIL"].map(mapa_datas)
-    
-    for col in tabela_acumulada.columns:
-        if col not in ["DIA_UTIL", "Dia Útil"]:
-            tabela_acumulada[col] = tabela_acumulada[col].apply(formatar_moeda)
-    
-    tabela_acumulada = tabela_acumulada.drop(columns="DIA_UTIL")
 
+    tabela_acum = g_acum.reset_index()
+    tabela_acum["Dia"] = tabela_acum["DIA_UTIL"].map(mapa_datas)
+    for c in tabela_acum.columns:
+        if c not in ["DIA_UTIL", "Dia"]:
+            tabela_acum[c] = tabela_acum[c].apply(formatar_moeda)
+    tabela_acum = tabela_acum.drop(columns="DIA_UTIL")
+
+    st.markdown("### 📋 VLRAF Diário")
+    st.dataframe(tabela_diaria, use_container_width=True)
+    st.download_button("⬇️ CSV Diário", tabela_diaria.to_csv(index=False, sep=";", decimal=","), f"vlraf_diario_{mes}.csv")
+
+    st.markdown("### 📋 VLRAF Acumulado")
+    st.dataframe(tabela_acum, use_container_width=True)
+    st.download_button("⬇️ CSV Acumulado", tabela_acum.to_csv(index=False, sep=";", decimal=","), f"vlraf_acumulado_{mes}.csv")
 
 # =================================================
-# TAB 2 — COMPARAÇÃO ENTRE MESES
+# TAB 2 — COMPARAÇÃO
 # =================================================
 with tab2:
     st.subheader("Comparação entre meses com desvio diário")
@@ -227,50 +183,31 @@ with tab2:
 
     for prod in sorted(base["GRUPO PRODUTO"].unique()):
         st.markdown(f"### {prod}")
-
         sub = base[base["GRUPO PRODUTO"] == prod]
+
         g = sub.groupby(["MES", "DIA_UTIL"])["VLRAF"].sum().unstack("MES", fill_value=0)
 
-        eixo_x = [f"D+{d}" for d in g.index]
-
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True, row_heights=[0.7, 0.3])
-
-        cores = {mes_a: "gray", mes_b: "#EA9411"}
-
-        for m in [mes_a, mes_b]:
-            fig.add_bar(row=1, col=1, x=eixo_x, y=g[m],
-                        name=m, marker_color=cores[m])
-
-        g["Desvio"] = g[mes_b] - g[mes_a]
-
-        fig.add_bar(row=2, col=1, x=eixo_x, y=g["Desvio"],
-                    marker_color=["#EA9411" if v >= 0 else "gray" for v in g["Desvio"]],
-                    showlegend=False)
-
-        fig.add_hline(y=0, row=2, col=1)
-        fig = aplicar_estilo_plotly(fig)
-        fig.update_layout(height=550)
-
-        st.plotly_chart(fig, use_container_width=True)
-
-        # TABELA + DOWNLOAD
-
         tabela = g.reset_index()
-        tabela["Dia Útil"] = tabela["DIA_UTIL"].apply(
+        tabela["Dia"] = tabela["DIA_UTIL"].apply(
             lambda x: sub[sub["DIA_UTIL"] == x]["DATA_EFETIVACAO"].iloc[0].strftime("%d/%m/%Y")
         )
-        
         tabela["Δ VLRAF"] = tabela[mes_b] - tabela[mes_a]
-        
-        tabela = tabela.rename(columns={
-            mes_a: f"VLRAF {mes_a}",
-            mes_b: f"VLRAF {mes_b}"
-        })
-        
-        for col in [f"VLRAF {mes_a}", f"VLRAF {mes_b}"]:
-            tabela[col] = tabela[col].apply(formatar_moeda)
-        
-        tabela["Δ VLRAF (R$)"] = tabela["Δ VLRAF"].apply(formatar_moeda)
-        
-        tabela = tabela[["Dia Útil", f"VLRAF {mes_a}", f"VLRAF {mes_b}", "Δ VLRAF (R$)"]]
+
+        tabela = tabela.rename(columns={mes_a: f"VLRAF {mes_a}", mes_b: f"VLRAF {mes_b}"})
+        for c in [f"VLRAF {mes_a}", f"VLRAF {mes_b}"]:
+            tabela[c] = tabela[c].apply(formatar_moeda)
+        tabela["Δ VLRAF"] = tabela["Δ VLRAF"].apply(formatar_moeda)
+
+        tabela = tabela[["Dia", f"VLRAF {mes_a}", f"VLRAF {mes_b}", "Δ VLRAF"]]
+
+        st.dataframe(
+            tabela.style.applymap(cor_desvio, subset=["Δ VLRAF"]),
+            use_container_width=True
+        )
+
+        st.download_button(
+            f"⬇️ CSV ({prod})",
+            tabela.to_csv(index=False, sep=";", decimal=","),
+            f"comparacao_{prod}_{mes_a}_vs_{mes_b}.csv"
+        )
 
