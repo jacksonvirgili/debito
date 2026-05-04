@@ -198,81 +198,107 @@ with tab2:
 
         sub = base[base["GRUPO PRODUTO"] == prod]
 
+        # ===============================
+        # BASE DIÁRIA
+        # ===============================
         g = (
             sub.groupby(["MES", "DIA_UTIL"])["VLRAF"]
             .sum()
             .unstack("MES", fill_value=0)
         )
 
+        # ===============================
         # MAPA DATA POR MES
+        # ===============================
         mapa_data = (
             sub.groupby(["MES", "DIA_UTIL"])["DATA_EFETIVACAO"]
             .min()
             .unstack("MES")
         )
 
-        # transformar em DATA + VALOR
+        # ===============================
+        # TRANSFORMAR EM DATA + VALOR
+        # ===============================
         for mes in [mes_a, mes_b]:
             g[(mes, "VALOR")] = g[mes]
             g[(mes, "DATA")] = mapa_data[mes]
             g.drop(columns=mes, inplace=True)
 
         # ===============================
-        # ORGANIZAR COLUNAS (DATA | VALOR)
+        # ORGANIZAR COLUNAS (ROBUSTO)
         # ===============================
         g.columns = pd.MultiIndex.from_tuples(g.columns)
         g.columns.names = ["MÊS", "TIPO"]
-        
-        # ordenar: DATA primeiro, depois VALOR
+
         cols_ordenadas = []
         for mes in [mes_a, mes_b]:
-            if (mes, "DATA") in g.columns:
-                cols_ordenadas.append((mes, "DATA"))
-            if (mes, "VALOR") in g.columns:
-                cols_ordenadas.append((mes, "VALOR"))
-        
-        g = g[cols_ordenadas]
+            for tipo in ["DATA", "VALOR"]:
+                if (mes, tipo) in g.columns:
+                    cols_ordenadas.append((mes, tipo))
 
+        cols_restantes = [c for c in g.columns if c not in cols_ordenadas]
+        g = g[cols_ordenadas + cols_restantes]
+
+        # ===============================
+        # ACUMULADO
+        # ===============================
         g_acum = g.copy()
-        
+
         for mes in [mes_a, mes_b]:
             if (mes, "VALOR") in g_acum.columns:
                 g_acum[(mes, "VALOR")] = g[(mes, "VALOR")].cumsum()
-        
-        # manter mesma ordem de colunas
-        g_acum = g_acum[cols_ordenadas]
 
-        for mes in [mes_a, mes_b]:
-            g_acum[(mes, "VALOR")] = g[(mes, "VALOR")].cumsum()
+        g_acum = g_acum[g.columns]
 
-        g_desvio = g.copy()
-        g_desvio["DESVIO"] = g[(mes_b, "VALOR")] - g[(mes_a, "VALOR")]
+        # ===============================
+        # DESVIO
+        # ===============================
+        g_desvio = pd.DataFrame(index=g.index)
 
+        if (mes_a, "VALOR") in g.columns and (mes_b, "VALOR") in g.columns:
+            g_desvio["DESVIO"] = g[(mes_b, "VALOR")] - g[(mes_a, "VALOR")]
+        else:
+            g_desvio["DESVIO"] = 0
+
+        # ===============================
+        # DESVIO ACUMULADO
+        # ===============================
         g_desvio_acum = g_desvio.copy()
         g_desvio_acum["DESVIO_ACUM"] = g_desvio["DESVIO"].cumsum()
 
-        fig = make_subplots(rows=2, cols=1, shared_xaxes=True)
+        # ===============================
+        # GRÁFICO
+        # ===============================
+        fig = make_subplots(
+            rows=2, cols=1,
+            shared_xaxes=True,
+            vertical_spacing=0.08,
+            row_heights=[0.7, 0.3]
+        )
 
         eixo_x = [f"D+{d}" for d in g.index]
-
         cores = {mes_a: "gray", mes_b: "#EA9411"}
-        
-        fig.add_bar(
-            row=1, col=1,
-            x=eixo_x,
-            y=g[(mes_a, "VALOR")],
-            name=mes_a,
-            marker_color=cores[mes_a]
-        )
-        
-        fig.add_bar(
-            row=1, col=1,
-            x=eixo_x,
-            y=g[(mes_b, "VALOR")],
-            name=mes_b,
-            marker_color=cores[mes_b]
-        )
 
+        # barras principais
+        if (mes_a, "VALOR") in g.columns:
+            fig.add_bar(
+                row=1, col=1,
+                x=eixo_x,
+                y=g[(mes_a, "VALOR")],
+                name=mes_a,
+                marker_color=cores[mes_a]
+            )
+
+        if (mes_b, "VALOR") in g.columns:
+            fig.add_bar(
+                row=1, col=1,
+                x=eixo_x,
+                y=g[(mes_b, "VALOR")],
+                name=mes_b,
+                marker_color=cores[mes_b]
+            )
+
+        # desvio
         fig.add_bar(
             row=2, col=1,
             x=eixo_x,
@@ -281,17 +307,38 @@ with tab2:
             showlegend=False
         )
 
+        fig.add_hline(y=0, row=2, col=1)
+
         fig = aplicar_estilo_plotly(fig)
+        fig.update_layout(height=550)
+
         st.plotly_chart(fig, use_container_width=True)
 
+        # ===============================
+        # TABELA UNIFICADA
+        # ===============================
         tabela_unificada = pd.concat(
             {
                 "Diário": g,
                 "Acumulado": g_acum,
-                "Desvio": g_desvio[["DESVIO"]],
-                "Desvio Acumulado": g_desvio_acum[["DESVIO_ACUM"]]
+                "Desvio": g_desvio,
+                "Desvio Acumulado": g_desvio_acum
             },
             axis=1
         )
 
         st.dataframe(formatar_tabela(tabela_unificada))
+
+        # ===============================
+        # EXCEL
+        # ===============================
+        excel = gerar_excel({
+            "Resumo": tabela_unificada
+        })
+
+        st.download_button(
+            f"📥 Baixar Excel - {prod}",
+            data=excel,
+            file_name=f"{prod}_{mes_a}_{mes_b}.xlsx",
+            key=f"download_{prod}_{mes_a}_{mes_b}"
+        )
