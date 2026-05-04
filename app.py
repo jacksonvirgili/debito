@@ -213,8 +213,29 @@ with tab1:
     st.plotly_chart(fig, use_container_width=True)
 
     # TABELAS
-    st.dataframe(formatar_tabela(g))
-    st.dataframe(formatar_tabela(g_acum))
+    # ===============================
+    # TABELA UNIFICADA
+    # ===============================
+    tabela_unificada = pd.concat(
+        {
+            "Diário": g,
+            "Acumulado": g_acum
+        },
+        axis=1
+    )
+    
+    st.dataframe(formatar_tabela(tabela_unificada))
+    
+    # Excel
+    excel = gerar_excel({
+        "Resumo": tabela_unificada
+    })
+    
+    st.download_button(
+        "📥 Baixar Excel",
+        data=excel,
+        file_name=f"vlraf_{mes}.xlsx"
+    )
 
     excel = gerar_excel({
         "Diario": g,
@@ -261,10 +282,32 @@ with tab2:
         st.plotly_chart(fig, use_container_width=True)
 
         # TABELAS
-        st.dataframe(formatar_tabela(g))
-
+        # ===============================
+        # TABELA UNIFICADA
+        # ===============================
         if not g_desvio.empty:
-            st.dataframe(formatar_tabela(g_desvio[["DESVIO"]]))
+            tabela_unificada = pd.concat(
+                {
+                    "Diário": g,
+                    "Desvio": g_desvio[["DESVIO"]]
+                },
+                axis=1
+            )
+        else:
+            tabela_unificada = g.copy()
+        
+        st.dataframe(formatar_tabela(tabela_unificada))
+        
+        # Excel
+        excel = gerar_excel({
+            "Resumo": tabela_unificada
+        })
+        
+        st.download_button(
+            f"📥 Baixar Excel - {prod}",
+            data=excel,
+            file_name=f"{prod}_{mes_a}_{mes_b}.xlsx"
+        )
 
         excel = gerar_excel({
             "Comparacao": g,
