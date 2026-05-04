@@ -157,8 +157,28 @@ with tab2:
         st.markdown(f"### {prod}")
         sub = base[base["GRUPO PRODUTO"] == prod]
 
-        g = sub.groupby(["MES", "DIA_UTIL"])["VLRAF"].sum().unstack(fill_value=0)
+        # Agrupamento base
+        g = (
+            sub
+            .groupby(["MES", "DIA_UTIL"])["VLRAF"]
+            .sum()
+            .unstack()
+        )
+        
+        # ✅ garante todos os dias úteis existentes
+        g = g.fillna(0)
+        
+        # ✅ garante as colunas dos dois meses
+        for m in [mes_a, mes_b]:
+            if m not in g.columns:
+                g[m] = 0
+        
+        # ✅ reordena explicitamente
+        g = g[[mes_a, mes_b]]
+        
+        # ✅ desvio (zero vale zero)
         g["DESVIO"] = g[mes_b] - g[mes_a]
+
 
         eixo_x = [f"D+{d}" for d in g.index]
 
