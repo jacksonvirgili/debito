@@ -200,8 +200,20 @@ with tab2:
 
         tabela = tabela[["Dia", f"VLRAF {mes_a}", f"VLRAF {mes_b}", "Δ VLRAF"]]
 
+        def aplicar_cor_desvio(df):
+            estilos = pd.DataFrame("", index=df.index, columns=df.columns)
+        
+            for i, v in df["Δ VLRAF"].items():
+                valor = float(v.replace("R$", "").replace(".", "").replace(",", "."))
+                if valor < 0:
+                    estilos.loc[i, "Δ VLRAF"] = "color: red; font-weight: bold"
+                else:
+                    estilos.loc[i, "Δ VLRAF"] = "color: #1f77b4; font-weight: bold"
+        
+            return estilos
+        
         st.dataframe(
-            tabela.style.applymap(cor_desvio, subset=["Δ VLRAF"]),
+            tabela.style.apply(aplicar_cor_desvio, axis=None),
             use_container_width=True
         )
 
