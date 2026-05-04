@@ -77,8 +77,17 @@ def aplicar_estilo_plotly(fig):
 
 def formatar_tabela(df):
     df_fmt = df.copy()
+
+    # índice como D+
     df_fmt.index = [f"D+{i}" for i in df_fmt.index]
     df_fmt.index.name = "DATA"
+
+    # formatação moeda
+    for col in df_fmt.columns:
+        df_fmt[col] = df_fmt[col].apply(
+            lambda x: f"R$ {x:,.0f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        )
+
     return df_fmt
 
 # =================================================
@@ -86,32 +95,40 @@ def formatar_tabela(df):
 # =================================================
 def gerar_excel(dfs_dict):
     output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        for nome, df in dfs_dict.items():
-            df.to_excel(writer, sheet_name=nome)
 
-            workbook  = writer.book
-            worksheet = writer.sheets[nome]
+    try:
+        with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            for nome, df in dfs_dict.items():
+                df.to_excel(writer, sheet_name=nome)
 
-            fmt_pos = workbook.add_format({'font_color': 'blue', 'num_format': 'R$ #,##0'})
-            fmt_neg = workbook.add_format({'font_color': 'red', 'num_format': 'R$ #,##0'})
+                workbook  = writer.book
+                worksheet = writer.sheets[nome]
 
-            for col_idx in range(1, len(df.columns)+1):
-                worksheet.set_column(col_idx, col_idx, 18)
+                fmt_pos = workbook.add_format({'font_color': 'blue', 'num_format': 'R$ #,##0'})
+                fmt_neg = workbook.add_format({'font_color': 'red', 'num_format': 'R$ #,##0'})
 
-                worksheet.conditional_format(1, col_idx, len(df), col_idx, {
-                    'type': 'cell',
-                    'criteria': '>=',
-                    'value': 0,
-                    'format': fmt_pos
-                })
+                for col_idx in range(1, len(df.columns)+1):
+                    worksheet.set_column(col_idx, col_idx, 18)
 
-                worksheet.conditional_format(1, col_idx, len(df), col_idx, {
-                    'type': 'cell',
-                    'criteria': '<',
-                    'value': 0,
-                    'format': fmt_neg
-                })
+                    worksheet.conditional_format(1, col_idx, len(df), col_idx, {
+                        'type': 'cell',
+                        'criteria': '>=',
+                        'value': 0,
+                        'format': fmt_pos
+                    })
+
+                    worksheet.conditional_format(1, col_idx, len(df), col_idx, {
+                        'type': 'cell',
+                        'criteria': '<',
+                        'value': 0,
+                        'format': fmt_neg
+                    })
+
+    except ModuleNotFoundError:
+        # fallback simples (sem formatação)
+        with pd.ExcelWriter(output) as writer:
+            for nome, df in dfs_dict.items():
+                df.to_excel(writer, sheet_name=nome)
 
     return output.getvalue()
 
