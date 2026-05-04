@@ -234,7 +234,8 @@ with tab1:
     st.download_button(
         "📥 Baixar Excel",
         data=excel,
-        file_name=f"vlraf_{mes}.xlsx"
+        file_name=f"vlraf_{mes}.xlsx",
+        key=f"download_tab1_{mes}"
     )
 
     excel = gerar_excel({
@@ -306,7 +307,8 @@ with tab2:
         st.download_button(
             f"📥 Baixar Excel - {prod}",
             data=excel,
-            file_name=f"{prod}_{mes_a}_{mes_b}.xlsx"
+            file_name=f"{prod}_{mes_a}_{mes_b}.xlsx",
+            key=f"download_{prod}_{mes_a}_{mes_b}"
         )
 
         excel = gerar_excel({
