@@ -143,6 +143,9 @@ with tab1:
 # =================================================
 # TAB 2 — COMPARAÇÃO ENTRE MESES
 # =================================================
+# =================================================
+# TAB 2 — COMPARAÇÃO ENTRE MESES
+# =================================================
 with tab2:
     st.subheader("Comparação entre meses com desvio diário")
 
@@ -188,11 +191,11 @@ with tab2:
         # desvio (zero vale zero)
         g["DESVIO"] = g[mes_b] - g[mes_a]
 
-        # eixo x
-        eixo_x = [f"D+{int(d)}" for d in g.index]
+        # eixo X (NÃO força int → evita ValueError)
+        eixo_x = [f"D+{d}" for d in g.index]
 
         # =================================================
-        # GRÁFICO (inalterado conceitualmente)
+        # GRÁFICO
         # =================================================
         fig = make_subplots(
             rows=2,
@@ -238,14 +241,14 @@ with tab2:
         st.plotly_chart(fig, use_container_width=True)
 
         # =================================================
-        # TABELA – COMPARAÇÃO ENTRE MESES (SEM RISCO DE ERRO)
+        # TABELA – COMPARAÇÃO ENTRE MESES
         # =================================================
         g.index.name = "DIA_UTIL"
         tabela = g.reset_index()
 
-        tabela["Dia Útil"] = tabela["DIA_UTIL"].apply(lambda x: f"D+{int(x)}")
+        tabela["Dia Útil"] = tabela["DIA_UTIL"].apply(lambda x: f"D+{x}")
 
-        # datas reais por mês (podem não existir em todos os dias)
+        # datas reais por mês (podem inexistir em alguns dias)
         datas = (
             sub
             .groupby(["MES", "DIA_UTIL"])["DATA_EFETIVACAO"]
@@ -263,8 +266,12 @@ with tab2:
             .set_index("DIA_UTIL")["DATA_EFETIVACAO"]
         )
 
-        tabela[f"Data {mes_a}"] = tabela["DIA_UTIL"].map(datas_a).dt.strftime("%d/%m/%Y")
-        tabela[f"Data {mes_b}"] = tabela["DIA_UTIL"].map(datas_b).dt.strftime("%d/%m/%Y")
+        tabela[f"Data {mes_a}"] = (
+            tabela["DIA_UTIL"].map(datas_a).dt.strftime("%d/%m/%Y")
+        )
+        tabela[f"Data {mes_b}"] = (
+            tabela["DIA_UTIL"].map(datas_b).dt.strftime("%d/%m/%Y")
+        )
 
         # formatação moeda
         for col in [mes_a, mes_b, "DESVIO"]:
