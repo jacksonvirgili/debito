@@ -217,7 +217,31 @@ with tab2:
             g[(mes, "DATA")] = mapa_data[mes]
             g.drop(columns=mes, inplace=True)
 
+        # ===============================
+        # ORGANIZAR COLUNAS (DATA | VALOR)
+        # ===============================
+        g.columns = pd.MultiIndex.from_tuples(g.columns)
+        g.columns.names = ["MÊS", "TIPO"]
+        
+        # ordenar: DATA primeiro, depois VALOR
+        cols_ordenadas = []
+        for mes in [mes_a, mes_b]:
+            if (mes, "DATA") in g.columns:
+                cols_ordenadas.append((mes, "DATA"))
+            if (mes, "VALOR") in g.columns:
+                cols_ordenadas.append((mes, "VALOR"))
+        
+        g = g[cols_ordenadas]
+
         g_acum = g.copy()
+        
+        for mes in [mes_a, mes_b]:
+            if (mes, "VALOR") in g_acum.columns:
+                g_acum[(mes, "VALOR")] = g[(mes, "VALOR")].cumsum()
+        
+        # manter mesma ordem de colunas
+        g_acum = g_acum[cols_ordenadas]
+
         for mes in [mes_a, mes_b]:
             g_acum[(mes, "VALOR")] = g[(mes, "VALOR")].cumsum()
 
