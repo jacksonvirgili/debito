@@ -231,10 +231,31 @@ with tab2:
 
         eixo_x = [f"D+{d}" for d in g.index]
 
-        fig.add_bar(row=1, col=1, x=eixo_x, y=g[(mes_a, "VALOR")], name=mes_a)
-        fig.add_bar(row=1, col=1, x=eixo_x, y=g[(mes_b, "VALOR")], name=mes_b)
+        cores = {mes_a: "gray", mes_b: "#EA9411"}
+        
+        fig.add_bar(
+            row=1, col=1,
+            x=eixo_x,
+            y=g[(mes_a, "VALOR")],
+            name=mes_a,
+            marker_color=cores[mes_a]
+        )
+        
+        fig.add_bar(
+            row=1, col=1,
+            x=eixo_x,
+            y=g[(mes_b, "VALOR")],
+            name=mes_b,
+            marker_color=cores[mes_b]
+        )
 
-        fig.add_bar(row=2, col=1, x=eixo_x, y=g_desvio["DESVIO"])
+        fig.add_bar(
+            row=2, col=1,
+            x=eixo_x,
+            y=g_desvio["DESVIO"],
+            marker_color=["#EA9411" if v >= 0 else "gray" for v in g_desvio["DESVIO"]],
+            showlegend=False
+        )
 
         fig = aplicar_estilo_plotly(fig)
         st.plotly_chart(fig, use_container_width=True)
