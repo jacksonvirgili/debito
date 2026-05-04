@@ -149,10 +149,9 @@ with tab2:
             "Desvio": desvio.apply(moeda)
         })
 
-        st.dataframe(
-            tabela.style.applymap(cor_desvio, subset=["Desvio"]),
-            use_container_width=True
-        )
+        styler = tabela.style.applymap(cor_desvio, subset=["Desvio"])
+        st.write(styler)
+
 
         nome = f"comparativo_{prod}.xlsx"
         tabela.to_excel(nome, index=False)
